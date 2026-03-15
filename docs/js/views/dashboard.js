@@ -30,7 +30,6 @@ export function renderDashboard(location, onCardClick) {
   }
 
   // Tips
-  const { generateTips } = await_tips_module();
   html += renderTipsPanel(location?.jurisdiction, records, today);
 
   const container = document.getElementById('tab-dashboard');
@@ -144,9 +143,7 @@ function renderJurisdictionCard(jurisdiction, records, today, isActive) {
           ${extra > 0 ? `<div class="j-card-projected">${extra} older day${extra === 1 ? '' : 's'} should fall off while you stay</div>` : ''}
         </div>
         <div class="progress-bar" style="margin-top:12px">
-          <div class="progress-bar-track" style="background:var(--${urgencyColor(urgency)});opacity:var(--ring-track)">
-            <div class="progress-bar-fill" style="width:${pct}%;background:var(--${urgencyColor(urgency)})"></div>
-          </div>
+          <div class="progress-bar-fill" style="width:${pct}%;background:var(--${urgencyColor(urgency)})"></div>
         </div>
       </div>
     </div>`;
@@ -298,11 +295,6 @@ function tipIcon(icon, priority) {
     'exclamation-circle': '\u2757',
   };
   return symbols[icon] || '\u{1F4A1}';
-}
-
-function await_tips_module() {
-  // Placeholder — tips are generated inline in renderTipsPanel
-  return { generateTips: () => [] };
 }
 
 function urgencyColor(urgency) {

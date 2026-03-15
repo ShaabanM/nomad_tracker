@@ -84,9 +84,7 @@ export function showDetail(jurisdictionId, location) {
         ${leaveBy ? `<div style="font-size:14px;color:var(--text-secondary);margin-top:4px">Can stay until ${formatDateLong(leaveBy)}</div>` : ''}
       </div>
       <div class="progress-bar" style="margin-top:12px">
-        <div class="progress-bar-track" style="background:var(--${urgencyColor(urgency)});opacity:var(--ring-track)">
-          <div class="progress-bar-fill" style="width:${pct}%;background:var(--${urgencyColor(urgency)})"></div>
-        </div>
+        <div class="progress-bar-fill" style="width:${pct}%;background:var(--${urgencyColor(urgency)})"></div>
       </div>
     </div>
 

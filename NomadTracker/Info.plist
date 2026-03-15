@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>NomadTracker</string>
+    <key>CFBundleDisplayName</key>
+    <string>Nomad Tracker</string>
+    <key>CFBundleIdentifier</key>
+    <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+    <key>CFBundleVersion</key>
+    <string>$(CURRENT_PROJECT_VERSION)</string>
+    <key>CFBundleShortVersionString</key>
+    <string>$(MARKETING_VERSION)</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleExecutable</key>
+    <string>$(EXECUTABLE_NAME)</string>
+    <key>UILaunchScreen</key>
+    <dict/>
+    <key>UISupportedInterfaceOrientations</key>
+    <array>
+        <string>UIInterfaceOrientationPortrait</string>
+    </array>
+    <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+    <string>Nomad Tracker uses your location to automatically detect which country you're in and count your visa days. Background tracking detects border crossings so you never miss a day.</string>
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>Nomad Tracker needs your location to detect which country you're in and track your visa days.</string>
+    <key>NSLocationAlwaysUsageDescription</key>
+    <string>Nomad Tracker uses background location to automatically detect when you cross borders, so your visa day counts stay accurate even when the app is closed.</string>
+    <key>UIBackgroundModes</key>
+    <array>
+        <string>location</string>
+        <string>fetch</string>
+    </array>
+</dict>
+</plist>

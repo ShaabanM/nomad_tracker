@@ -1,7 +1,7 @@
 // Contextual tip generation — ported from TipsEngine.swift
-import { findJurisdiction, ALL_JURISDICTIONS } from '../data/jurisdictions.js';
+import { findJurisdiction, RULE_TYPES } from '../data/jurisdictions.js';
 import * as rules from './rules-engine.js';
-import { todayStr, parseDate } from './storage.js';
+import { todayStr } from './storage.js';
 
 export function generateTips(currentJurisdiction, records, asOf = todayStr()) {
   const tips = [];
@@ -23,6 +23,11 @@ function currentJurisdictionTips(jurisdiction, records, asOf) {
   const remaining = rules.daysRemaining(jurisdiction, records, asOf);
   const used = rules.daysUsed(jurisdiction, records, asOf);
   const max = jurisdiction.maxDays;
+  const extraDays = rules.projectedExtraDays(jurisdiction, records, asOf);
+  const fullReset = rules.fullAllowanceResetDate(jurisdiction, records, asOf);
+  const rollingProjectionNote = extraDays > 0
+    ? ` Older days should fall out of the rolling window while you stay, buying you about ${extraDays} extra day${extraDays === 1 ? '' : 's'}.`
+    : '';
 
   // Deadline warnings
   if (used > 0) {
@@ -33,7 +38,7 @@ function currentJurisdictionTips(jurisdiction, records, asOf) {
       tips.push({
         icon: 'exclamation-triangle-fill',
         title: `Leave ${jurisdiction.name} by ${leaveDate}`,
-        message: `Only ${remaining} day${remaining === 1 ? '' : 's'} remaining! Book your departure now.`,
+        message: `Only ${remaining} day${remaining === 1 ? '' : 's'} remaining! Book your departure now.${rollingProjectionNote}`,
         priority: 'critical',
         category: 'deadline',
       });
@@ -41,7 +46,7 @@ function currentJurisdictionTips(jurisdiction, records, asOf) {
       tips.push({
         icon: 'exclamation-triangle',
         title: `${remaining} days remaining in ${jurisdiction.name}`,
-        message: `Start planning your departure. You must leave by ${leaveDate}.`,
+        message: `Start planning your departure. You must leave by ${leaveDate}.${rollingProjectionNote}`,
         priority: 'high',
         category: 'deadline',
       });
@@ -49,7 +54,7 @@ function currentJurisdictionTips(jurisdiction, records, asOf) {
       tips.push({
         icon: 'clock',
         title: `${remaining} days remaining in ${jurisdiction.name}`,
-        message: `You can stay until ${leaveDate} if you remain continuously.`,
+        message: `You can stay until ${leaveDate} if you remain continuously.${rollingProjectionNote}`,
         priority: 'medium',
         category: 'deadline',
       });
@@ -57,7 +62,7 @@ function currentJurisdictionTips(jurisdiction, records, asOf) {
       tips.push({
         icon: 'check-circle',
         title: `Comfortable in ${jurisdiction.name}`,
-        message: `${remaining} of ${max} days remaining. Can stay until ${leaveDate}.`,
+        message: `${remaining} of ${max} days remaining. Can stay until ${leaveDate}.${rollingProjectionNote}`,
         priority: 'low',
         category: 'status',
       });
@@ -75,6 +80,16 @@ function currentJurisdictionTips(jurisdiction, records, asOf) {
       title: 'Days falling off the window',
       message: `${fallOff.count} day${fallOff.count === 1 ? '' : 's'} will fall off the ${label} on ${formatDate(fallOff.date)}, giving you more allowance.`,
       priority: 'low',
+      category: 'info',
+    });
+  }
+
+  if (jurisdiction.ruleType === RULE_TYPES.ROLLING && fullReset && used > 0) {
+    tips.push({
+      icon: 'sparkles',
+      title: `Full allowance restores on ${formatDate(fullReset)}`,
+      message: `If you leave ${jurisdiction.name} now, that is the earliest date your rolling window returns to a clean slate.`,
+      priority: remaining <= 14 ? 'medium' : 'low',
       category: 'info',
     });
   }

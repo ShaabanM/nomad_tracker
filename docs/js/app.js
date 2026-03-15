@@ -1,6 +1,15 @@
 // Main app controller — wires everything together
-import { hasCompletedOnboarding, getRecords, addRecord, makeRecord, fillGaps, todayStr } from './services/storage.js';
+import { hasCompletedOnboarding, addRecord, makeRecord, fillGaps } from './services/storage.js';
 import { detectLocation, isLocationStale } from './services/location.js';
+import {
+  captureInstallPrompt,
+  dismissInstallHint,
+  hasNativeInstallPrompt,
+  installActionLabel,
+  installInstructions,
+  promptInstall,
+  shouldShowInstallHint,
+} from './services/install.js';
 import { renderDashboard } from './views/dashboard.js';
 import { renderTimeline } from './views/timeline.js';
 import { renderSettings } from './views/settings.js';
@@ -9,10 +18,13 @@ import { showOnboarding } from './views/onboarding.js';
 
 let currentLocation = null;
 let activeTab = 'dashboard';
+let tabBarWired = false;
+let eventsWired = false;
+let installEventsWired = false;
 
-// Boot
 async function init() {
-  // Show onboarding if first launch
+  wireInstallEvents();
+
   if (!hasCompletedOnboarding()) {
     showOnboarding(() => {
       boot();
@@ -24,97 +36,186 @@ async function init() {
 }
 
 async function boot() {
-  // Detect location
-  try {
-    currentLocation = await detectLocation();
-  } catch (e) {
-    console.warn('Location detection failed:', e);
-  }
+  currentLocation = await detectCurrentLocation();
+  logCurrentPresence(currentLocation);
 
-  // Log today if we have a location
-  if (currentLocation?.jurisdiction) {
-    const code = [...currentLocation.jurisdiction.countryCodes][0] || currentLocation.countryCode;
-    const record = makeRecord(new Date(), code, currentLocation.jurisdiction.id, 'gps');
-    addRecord(record);
-
-    // Fill any gap days
-    fillGaps(currentLocation.jurisdiction.id, code);
-  }
-
-  // Render active tab
   renderActiveTab();
-  wireTabBar();
-  wireEvents();
 
-  // Show stale location banner if needed
+  if (!tabBarWired) wireTabBar();
+  if (!eventsWired) wireEvents();
+
   if (isLocationStale(24) && currentLocation?.cached) {
     showStaleBanner();
   }
 }
 
 function renderActiveTab() {
-  // Hide all tabs, show active
-  document.querySelectorAll('.tab-content').forEach(el => el.hidden = true);
+  if (!document.getElementById('tab-dashboard')) return;
+
+  document.querySelectorAll('.tab-content').forEach((element) => {
+    element.hidden = true;
+  });
   document.getElementById(`tab-${activeTab}`).hidden = false;
 
-  // Update tab bar active state
-  document.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.tab === activeTab);
+  document.querySelectorAll('.tab-btn').forEach((button) => {
+    button.classList.toggle('active', button.dataset.tab === activeTab);
   });
 
-  // Render content
   switch (activeTab) {
     case 'dashboard':
-      renderDashboard(currentLocation, (jId) => showDetail(jId, currentLocation));
+      renderDashboard(
+        currentLocation,
+        (jurisdictionId) => showDetail(jurisdictionId, currentLocation),
+        {
+          showInstallHint: shouldShowInstallHint(),
+          installPromptAvailable: hasNativeInstallPrompt(),
+          installMessage: installInstructions(),
+          installActionLabel: installActionLabel(),
+        },
+      );
       break;
     case 'timeline':
       renderTimeline();
       break;
     case 'settings':
-      renderSettings(currentLocation, (jId) => showDetail(jId, currentLocation));
+      renderSettings(currentLocation, (jurisdictionId) => showDetail(jurisdictionId, currentLocation));
+      break;
+    default:
       break;
   }
 }
 
 function wireTabBar() {
-  document.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      activeTab = btn.dataset.tab;
+  tabBarWired = true;
+
+  document.querySelectorAll('.tab-btn').forEach((button) => {
+    button.addEventListener('click', () => {
+      activeTab = button.dataset.tab;
       renderActiveTab();
     });
   });
 }
 
 function wireEvents() {
-  // Refresh location
+  eventsWired = true;
+
   document.addEventListener('refresh-location', async () => {
-    const refreshBtns = document.querySelectorAll('.refresh-btn');
-    refreshBtns.forEach(b => { b.textContent = '\u23F3'; b.disabled = true; });
+    const refreshButtons = document.querySelectorAll('.refresh-btn');
+    refreshButtons.forEach((button) => {
+      button.textContent = '⏳';
+      button.disabled = true;
+    });
 
-    try {
-      currentLocation = await detectLocation();
-
-      if (currentLocation?.jurisdiction) {
-        const code = [...currentLocation.jurisdiction.countryCodes][0] || currentLocation.countryCode;
-        const record = makeRecord(new Date(), code, currentLocation.jurisdiction.id, 'gps');
-        addRecord(record);
-        fillGaps(currentLocation.jurisdiction.id, code);
-      }
-    } catch (e) {
-      console.warn('Refresh failed:', e);
-    }
-
+    currentLocation = await detectCurrentLocation();
+    logCurrentPresence(currentLocation);
     renderActiveTab();
   });
 
-  // Data changed (from settings, detail, etc.)
   document.addEventListener('data-changed', () => {
+    renderActiveTab();
+  });
+
+  document.addEventListener('prompt-install', async () => {
+    if (!hasNativeInstallPrompt()) {
+      showInstallHelpModal();
+      return;
+    }
+
+    await promptInstall();
+    renderActiveTab();
+  });
+
+  document.addEventListener('show-install-help', () => {
+    showInstallHelpModal();
+  });
+
+  document.addEventListener('dismiss-install-help', () => {
+    dismissInstallHint();
     renderActiveTab();
   });
 }
 
+function wireInstallEvents() {
+  if (installEventsWired) return;
+  installEventsWired = true;
+
+  window.addEventListener('beforeinstallprompt', (event) => {
+    event.preventDefault();
+    captureInstallPrompt(event);
+    renderActiveTab();
+  });
+
+  window.addEventListener('appinstalled', () => {
+    renderActiveTab();
+  });
+}
+
+async function detectCurrentLocation() {
+  try {
+    return await detectLocation();
+  } catch (error) {
+    console.warn('Location detection failed:', error);
+    return null;
+  }
+}
+
+function logCurrentPresence(location) {
+  if (!location?.jurisdiction) return false;
+
+  const countryCode = location.countryCode || [...location.jurisdiction.countryCodes][0] || 'XX';
+  const record = makeRecord(new Date(), countryCode, location.jurisdiction.id, 'gps');
+  const added = addRecord(record);
+
+  if (added) {
+    fillGaps(location.jurisdiction.id, countryCode);
+  }
+
+  return added;
+}
+
+function showInstallHelpModal() {
+  const modal = document.getElementById('modal');
+  const closeModal = () => {
+    modal.classList.remove('open');
+    modal.onclick = null;
+  };
+
+  modal.querySelector('.modal-sheet').innerHTML = `
+    <div class="modal-handle"></div>
+    <div class="modal-title">Install Nomad Tracker</div>
+    <div class="card">
+      <div class="rule-card-label">Why install it</div>
+      <div class="detail-section-copy">Installing the app gives you a home-screen icon, full-screen launch, faster repeat visits, and the most native feeling on iPhone.</div>
+    </div>
+    <div class="card">
+      <div class="rule-card-label">On iPhone</div>
+      <div class="planning-row">
+        <div class="planning-row-title">1. Open in Safari</div>
+        <div class="planning-row-detail">Apple only allows home-screen installation from Safari on iPhone.</div>
+      </div>
+      <div class="planning-row">
+        <div class="planning-row-title">2. Tap Share</div>
+        <div class="planning-row-detail">Use the Share button in the bottom toolbar.</div>
+      </div>
+      <div class="planning-row">
+        <div class="planning-row-title">3. Choose Add to Home Screen</div>
+        <div class="planning-row-detail">You will get an icon and a standalone app-style launch experience.</div>
+      </div>
+    </div>
+    <button class="btn btn-primary" id="install-help-close">Close</button>`;
+
+  modal.classList.add('open');
+  modal.onclick = (event) => {
+    if (event.target === modal) closeModal();
+  };
+  modal.querySelector('#install-help-close').addEventListener('click', closeModal);
+}
+
 function showStaleBanner() {
+  document.getElementById('stale-location-banner')?.remove();
+
   const banner = document.createElement('div');
+  banner.id = 'stale-location-banner';
   banner.style.cssText = 'position:fixed;top:0;left:0;right:0;background:var(--orange);color:white;text-align:center;padding:calc(var(--safe-top) + 4px) 16px 8px;font-size:13px;font-weight:500;z-index:150;cursor:pointer';
   banner.textContent = 'Location data is stale. Tap to refresh.';
   banner.addEventListener('click', () => {
@@ -124,12 +225,10 @@ function showStaleBanner() {
   document.body.appendChild(banner);
 }
 
-// Register service worker
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./sw.js').catch(err => {
-    console.warn('SW registration failed:', err);
+  navigator.serviceWorker.register('./sw.js').catch((error) => {
+    console.warn('SW registration failed:', error);
   });
 }
 
-// Start
 document.addEventListener('DOMContentLoaded', init);

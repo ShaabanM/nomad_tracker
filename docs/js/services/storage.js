@@ -88,13 +88,32 @@ export function makeRecord(date, countryCode, jurisdictionId, source = 'manual')
 export function addDateRange(jurisdictionId, countryCode, startDate, endDate, source = 'manual') {
   const start = toDateStr(startDate);
   const end = toDateStr(endDate);
+  const records = getRecords();
+  const existing = new Set(
+    records
+      .filter(r => r.jurisdictionId === jurisdictionId)
+      .map(r => r.date)
+  );
+  const nextRecords = [...records];
   let current = start;
   let added = 0;
+
   while (current <= end) {
-    const record = makeRecord(parseDate(current), countryCode, jurisdictionId, source);
-    if (addRecord(record)) added++;
+    if (!existing.has(current)) {
+      nextRecords.push({
+        id: crypto.randomUUID(),
+        date: current,
+        countryCode,
+        jurisdictionId,
+        source,
+      });
+      existing.add(current);
+      added++;
+    }
     current = addDays(current, 1);
   }
+
+  if (added > 0) saveRecords(nextRecords);
   return added;
 }
 

@@ -1,6 +1,9 @@
 {
   "name": "Nomad Tracker",
   "short_name": "NomadTracker",
+  "id": "./",
+  "scope": "./",
+  "lang": "en",
   "description": "Track your visa days across multiple countries. Never overstay anywhere.",
   "start_url": "./",
   "display": "standalone",

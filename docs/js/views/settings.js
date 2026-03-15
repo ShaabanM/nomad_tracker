@@ -2,43 +2,52 @@
 import { ALL_JURISDICTIONS, countryFlag, ruleDescription } from '../data/jurisdictions.js';
 import * as rules from '../services/rules-engine.js';
 import { getRecords, addDateRange, clearAllRecords, todayStr, toDateStr } from '../services/storage.js';
+import { isStandalone, shouldShowInstallHint } from '../services/install.js';
 
 export function renderSettings(location, onJurisdictionClick) {
   const records = getRecords();
   const today = todayStr();
   const container = document.getElementById('tab-settings');
+  const trackedJurisdictions = new Set(records.map((record) => record.jurisdictionId)).size;
+  const manualEntries = records.filter((record) => record.source === 'manual').length;
+  const installStatus = isStandalone() ? 'Installed' : (shouldShowInstallHint() ? 'Ready to install' : 'Browser mode');
 
-  // Location status
   const locationStatus = location
     ? `<div class="settings-row">
-        <span class="settings-icon" style="color:var(--green)">\u{1F4CD}</span>
+        <span class="settings-icon" style="color:var(--green)">📍</span>
         <span class="settings-label">Location tracking active</span>
+        <span class="settings-value">${location.cached ? 'cached' : 'live'}</span>
       </div>
       <div class="settings-row">
         <span class="settings-label">Current location</span>
-        <span class="settings-value">${location.countryCode ? countryFlag(location.countryCode) + ' ' + location.country : 'Unknown'}</span>
+        <span class="settings-value">${location.countryCode ? `${countryFlag(location.countryCode)} ${location.country}` : 'Unknown'}</span>
       </div>`
     : `<div class="settings-row">
-        <span class="settings-icon" style="color:var(--red)">\u274C</span>
+        <span class="settings-icon" style="color:var(--red)">✕</span>
         <span class="settings-label">Location not available</span>
+        <span class="settings-value">Browser blocked or unavailable</span>
       </div>`;
 
-  // All jurisdictions
-  let jurisdictionRows = '';
-  for (const j of ALL_JURISDICTIONS) {
-    const used = rules.daysUsed(j, records, today);
-    const usedLabel = used > 0 ? `${used}/${j.maxDays}` : '';
-    jurisdictionRows += `
-      <div class="settings-row clickable" data-jurisdiction="${j.id}">
-        <span class="settings-icon">${j.emoji}</span>
-        <div class="flex-1">
-          <div style="font-size:15px">${j.name}</div>
-          <div style="font-size:12px;color:var(--text-secondary)">${ruleDescription(j)}</div>
-        </div>
-        ${usedLabel ? `<span class="settings-value">${usedLabel}</span>` : ''}
-        <span class="chevron-right"></span>
-      </div>`;
-  }
+  const jurisdictionRows = [...ALL_JURISDICTIONS]
+    .sort((a, b) => {
+      const byUsed = rules.daysUsed(b, records, today) - rules.daysUsed(a, records, today);
+      return byUsed !== 0 ? byUsed : a.name.localeCompare(b.name);
+    })
+    .map((jurisdiction) => {
+      const used = rules.daysUsed(jurisdiction, records, today);
+      const remaining = rules.daysRemaining(jurisdiction, records, today);
+      const usedLabel = used > 0 ? `${used}/${jurisdiction.maxDays}` : `${remaining} open`;
+      return `
+        <div class="settings-row clickable" data-jurisdiction="${jurisdiction.id}">
+          <span class="settings-icon">${jurisdiction.emoji}</span>
+          <div class="flex-1">
+            <div style="font-size:15px">${jurisdiction.name}</div>
+            <div style="font-size:12px;color:var(--text-secondary)">${ruleDescription(jurisdiction)}</div>
+          </div>
+          <span class="settings-value">${usedLabel}</span>
+          <span class="chevron-right"></span>
+        </div>`;
+    }).join('');
 
   container.innerHTML = `
     <div class="nav-title">Settings</div>
@@ -46,63 +55,84 @@ export function renderSettings(location, onJurisdictionClick) {
     <div class="section-title">Location Status</div>
     <div class="card">${locationStatus}</div>
 
+    <div class="section-title">Install & Access</div>
+    <div class="card">
+      <div class="settings-row">
+        <span class="settings-icon">📱</span>
+        <span class="settings-label">Home-screen status</span>
+        <span class="settings-value">${installStatus}</span>
+      </div>
+      <div class="settings-row">
+        <span class="settings-icon">🌐</span>
+        <span class="settings-label">Hosting mode</span>
+        <span class="settings-value">Static PWA</span>
+      </div>
+    </div>
+
     <div class="section-title">Add Past Travel</div>
     <div class="card">
-      <button class="btn btn-bordered" id="add-travel-btn">\u2795 Add days to a jurisdiction</button>
-      <div style="font-size:12px;color:var(--text-secondary);margin-top:8px">
-        Use this to enter days you've already spent in a jurisdiction before installing.
+      <button class="btn btn-bordered" id="add-travel-btn">Add days to a jurisdiction</button>
+      <div class="detail-muted mt-8">
+        Use this to backfill historical stays, including the specific country inside a pooled zone like Schengen.
       </div>
     </div>
 
     <div class="section-title">All Jurisdictions</div>
     <div class="card" style="padding:0 16px">${jurisdictionRows}</div>
 
-    <div class="section-title">About</div>
+    <div class="section-title">About This Tracker</div>
     <div class="card">
       <div class="settings-row">
-        <span class="settings-label">Citizenship</span>
-        <span class="settings-value">\u{1F1E8}\u{1F1E6} Canadian</span>
+        <span class="settings-label">Citizenship profile</span>
+        <span class="settings-value">🇨🇦 Canadian</span>
       </div>
       <div class="settings-row">
-        <span class="settings-label">Tracked jurisdictions</span>
+        <span class="settings-label">Supported jurisdictions</span>
         <span class="settings-value">${ALL_JURISDICTIONS.length}</span>
+      </div>
+      <div class="settings-row">
+        <span class="settings-label">Tracked now</span>
+        <span class="settings-value">${trackedJurisdictions}</span>
       </div>
       <div class="settings-row">
         <span class="settings-label">Total days logged</span>
         <span class="settings-value">${records.length}</span>
       </div>
+      <div class="settings-row">
+        <span class="settings-label">Manual entries</span>
+        <span class="settings-value">${manualEntries}</span>
+      </div>
     </div>
 
     <div class="section-title">Danger Zone</div>
     <div class="card">
-      <button class="btn btn-destructive" id="clear-all-btn">\u{1F5D1} Clear All Data</button>
+      <button class="btn btn-destructive" id="clear-all-btn">Clear All Data</button>
     </div>`;
 
-  // Wire up jurisdiction clicks
-  container.querySelectorAll('[data-jurisdiction]').forEach(el => {
-    el.addEventListener('click', () => onJurisdictionClick(el.dataset.jurisdiction));
+  container.querySelectorAll('[data-jurisdiction]').forEach((element) => {
+    element.addEventListener('click', () => onJurisdictionClick(element.dataset.jurisdiction));
   });
 
-  // Wire up add travel button
   container.querySelector('#add-travel-btn').addEventListener('click', () => {
     showAddTravelModal();
   });
 
-  // Wire up clear all
   container.querySelector('#clear-all-btn').addEventListener('click', () => {
-    if (confirm('This will delete ALL recorded travel days across all jurisdictions. This cannot be undone.')) {
-      clearAllRecords();
-      renderSettings(location, onJurisdictionClick);
-      document.dispatchEvent(new CustomEvent('data-changed'));
-    }
+    if (!confirm('This will delete all recorded travel days across all jurisdictions. This cannot be undone.')) return;
+    clearAllRecords();
+    document.dispatchEvent(new CustomEvent('data-changed'));
   });
 }
 
 function showAddTravelModal() {
   const modal = document.getElementById('modal');
-  const options = ALL_JURISDICTIONS.map(j =>
-    `<option value="${j.id}">${j.emoji} ${j.name}</option>`
-  ).join('');
+  const closeModal = () => {
+    modal.classList.remove('open');
+    modal.onclick = null;
+  };
+  const options = ALL_JURISDICTIONS.map((jurisdiction) => (
+    `<option value="${jurisdiction.id}">${jurisdiction.emoji} ${jurisdiction.name}</option>`
+  )).join('');
 
   modal.querySelector('.modal-sheet').innerHTML = `
     <div class="modal-handle"></div>
@@ -111,6 +141,7 @@ function showAddTravelModal() {
       <label class="form-label">Jurisdiction</label>
       <select class="form-select" id="modal-jurisdiction">${options}</select>
     </div>
+    <div id="modal-country-field"></div>
     <div class="form-group">
       <label class="form-label">From</label>
       <input type="date" class="form-input" id="modal-start" value="${toDateStr(new Date())}">
@@ -119,47 +150,77 @@ function showAddTravelModal() {
       <label class="form-label">To</label>
       <input type="date" class="form-input" id="modal-end" value="${toDateStr(new Date())}">
     </div>
-    <div id="modal-preview" style="font-size:13px;color:var(--text-secondary);margin-bottom:16px"></div>
+    <div id="modal-preview" class="detail-muted mb-12"></div>
     <button class="btn btn-primary" id="modal-add">Add Days</button>
-    <button class="btn btn-text" id="modal-cancel" style="margin-top:8px">Cancel</button>`;
+    <button class="btn btn-text" id="modal-cancel">Cancel</button>`;
 
   modal.classList.add('open');
+  modal.onclick = (event) => {
+    if (event.target === modal) closeModal();
+  };
+
+  const renderCountryField = () => {
+    const selected = ALL_JURISDICTIONS.find((jurisdiction) => jurisdiction.id === document.getElementById('modal-jurisdiction').value);
+    const countryCodes = [...selected.countryCodes].sort();
+    const field = document.getElementById('modal-country-field');
+
+    if (countryCodes.length > 1) {
+      field.innerHTML = `<div class="form-group">
+        <label class="form-label">Country</label>
+        <select class="form-select" id="modal-country">
+          ${countryCodes.map((code) => (
+            `<option value="${code}">${countryFlag(code)} ${new Intl.DisplayNames(['en'], { type: 'region' }).of(code)}</option>`
+          )).join('')}
+        </select>
+      </div>`;
+      return;
+    }
+
+    const code = countryCodes[0] || 'XX';
+    field.innerHTML = `<div class="form-group">
+      <label class="form-label">Country</label>
+      <div class="form-input">${countryFlag(code)} ${new Intl.DisplayNames(['en'], { type: 'region' }).of(code) || code}</div>
+      <input type="hidden" id="modal-country" value="${code}">
+    </div>`;
+  };
 
   const updatePreview = () => {
     const start = document.getElementById('modal-start').value;
     const end = document.getElementById('modal-end').value;
-    if (start && end) {
-      const days = Math.max(1, Math.round((new Date(end + 'T00:00') - new Date(start + 'T00:00')) / 86400000) + 1);
-      const j = ALL_JURISDICTIONS.find(j => j.id === document.getElementById('modal-jurisdiction').value);
-      document.getElementById('modal-preview').textContent =
-        `This will add ${days} day${days === 1 ? '' : 's'} to ${j?.name || 'jurisdiction'}`;
-    }
+    if (!start || !end) return;
+    const days = Math.max(1, Math.round((new Date(`${end}T00:00`) - new Date(`${start}T00:00`)) / 86400000) + 1);
+    const jurisdiction = ALL_JURISDICTIONS.find((item) => item.id === document.getElementById('modal-jurisdiction').value);
+    document.getElementById('modal-preview').textContent =
+      `This will add ${days} day${days === 1 ? '' : 's'} to ${jurisdiction?.name || 'your selected jurisdiction'}.`;
   };
 
-  document.getElementById('modal-start').addEventListener('change', updatePreview);
-  document.getElementById('modal-end').addEventListener('change', updatePreview);
-  document.getElementById('modal-jurisdiction').addEventListener('change', updatePreview);
+  renderCountryField();
   updatePreview();
 
-  document.getElementById('modal-cancel').addEventListener('click', () => {
-    modal.classList.remove('open');
+  document.getElementById('modal-jurisdiction').addEventListener('change', () => {
+    renderCountryField();
+    updatePreview();
   });
+  document.getElementById('modal-start').addEventListener('change', updatePreview);
+  document.getElementById('modal-end').addEventListener('change', updatePreview);
+
+  document.getElementById('modal-cancel').addEventListener('click', closeModal);
 
   document.getElementById('modal-add').addEventListener('click', () => {
-    const jId = document.getElementById('modal-jurisdiction').value;
+    const jurisdictionId = document.getElementById('modal-jurisdiction').value;
     const start = document.getElementById('modal-start').value;
     const end = document.getElementById('modal-end').value;
-    const j = ALL_JURISDICTIONS.find(j => j.id === jId);
-    if (j && start && end) {
-      const code = [...j.countryCodes][0] || 'XX';
-      addDateRange(jId, code, new Date(start + 'T00:00'), new Date(end + 'T00:00'), 'manual');
-      modal.classList.remove('open');
-      document.dispatchEvent(new CustomEvent('data-changed'));
-    }
-  });
+    const jurisdiction = ALL_JURISDICTIONS.find((item) => item.id === jurisdictionId);
+    const countryCode = document.getElementById('modal-country')?.value || [...(jurisdiction?.countryCodes || [])][0] || 'XX';
 
-  // Close on overlay click
-  modal.addEventListener('click', (e) => {
-    if (e.target === modal) modal.classList.remove('open');
-  }, { once: true });
+    if (!jurisdiction || !start || !end) return;
+    if (start > end) {
+      alert('The end date must be on or after the start date.');
+      return;
+    }
+
+    addDateRange(jurisdictionId, countryCode, new Date(`${start}T00:00`), new Date(`${end}T00:00`), 'manual');
+    closeModal();
+    document.dispatchEvent(new CustomEvent('data-changed'));
+  });
 }

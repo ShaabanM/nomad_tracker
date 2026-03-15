@@ -1,6 +1,6 @@
 // Visa day counting algorithms — ported from RulesEngine.swift
 import { RULE_TYPES } from '../data/jurisdictions.js';
-import { toDateStr, todayStr, parseDate, addDays, diffDays, getRecords } from './storage.js';
+import { todayStr, parseDate, addDays } from './storage.js';
 
 // Core: how many days used in a jurisdiction
 export function daysUsed(jurisdiction, records, asOf = todayStr()) {
@@ -76,6 +76,32 @@ export function projectedExtraDays(jurisdiction, records, asOf = todayStr()) {
   return Math.max(0, projected - naiveDays);
 }
 
+// If you leave now, when does this jurisdiction return to a full allowance?
+export function fullAllowanceResetDate(jurisdiction, records, asOf = todayStr()) {
+  const relevant = records.filter(r => r.jurisdictionId === jurisdiction.id);
+
+  switch (jurisdiction.ruleType) {
+    case RULE_TYPES.ROLLING: {
+      const windowStart = addDays(asOf, -(jurisdiction.windowDays - 1));
+      const sortedWindowDays = relevant
+        .map(r => r.date)
+        .filter(date => date >= windowStart && date <= asOf)
+        .sort();
+
+      if (sortedWindowDays.length === 0) return null;
+      const latestRelevant = sortedWindowDays[sortedWindowDays.length - 1];
+      return addDays(latestRelevant, jurisdiction.windowDays);
+    }
+
+    case RULE_TYPES.CALENDAR_YEAR:
+      return daysInCalendarYear(relevant, asOf) > 0 ? calendarYearResetDate(asOf) : null;
+
+    case RULE_TYPES.PER_VISIT:
+    default:
+      return null;
+  }
+}
+
 // For rolling windows: when does the earliest day fall off?
 export function nextDayFallsOff(jurisdiction, records, asOf = todayStr()) {
   if (jurisdiction.ruleType !== RULE_TYPES.ROLLING) return null;
@@ -84,12 +110,12 @@ export function nextDayFallsOff(jurisdiction, records, asOf = todayStr()) {
     .filter(r => r.jurisdictionId === jurisdiction.id)
     .sort((a, b) => a.date.localeCompare(b.date));
 
-  const windowStart = addDays(asOf, -jurisdiction.windowDays);
+  const windowStart = addDays(asOf, -(jurisdiction.windowDays - 1));
   const inWindow = relevant.filter(r => r.date >= windowStart && r.date <= asOf);
   if (inWindow.length === 0) return null;
 
   const earliest = inWindow[0];
-  const fallOffDate = addDays(earliest.date, jurisdiction.windowDays + 1);
+  const fallOffDate = addDays(earliest.date, jurisdiction.windowDays);
   const count = inWindow.filter(r => r.date === earliest.date).length;
 
   return { date: fallOffDate, count };

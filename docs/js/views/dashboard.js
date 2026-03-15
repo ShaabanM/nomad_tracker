@@ -1,113 +1,377 @@
-// Dashboard tab rendering
-import { ALL_JURISDICTIONS, countryFlag, ruleLabel, ruleDescription } from '../data/jurisdictions.js';
+import { ALL_JURISDICTIONS, countryFlag, ruleLabel } from '../data/jurisdictions.js';
 import * as rules from '../services/rules-engine.js';
 import { getRecords, todayStr } from '../services/storage.js';
+import { generateTips } from '../services/tips-engine.js';
 
-export function renderDashboard(location, onCardClick) {
+export function renderDashboard(location, onCardClick, appContext = {}) {
   const records = getRecords();
   const today = todayStr();
+  const active = getActiveJurisdictions(location, records, today);
+  const summaryJurisdiction = location?.jurisdiction || active[0] || null;
+  const tips = generateTips(location?.jurisdiction || summaryJurisdiction, records, today);
 
   let html = '';
-
-  // Location header
+  html += renderInstallBanner(appContext);
   html += renderLocationHeader(location);
-
-  // Active jurisdictions
-  const active = getActiveJurisdictions(location, records, today);
+  html += renderSummaryCard(summaryJurisdiction, records, today, location);
 
   if (active.length === 0) {
-    html += `
-      <div class="empty-state">
-        <div class="empty-icon">\u{1F30D}</div>
-        <div class="empty-title">No jurisdictions tracked yet</div>
-        <div class="empty-desc">Your location will be detected automatically, or you can add past travel in Settings.</div>
-      </div>`;
+    html += renderEmptyState();
   } else {
-    for (const j of active) {
-      const isActive = location?.jurisdiction?.id === j.id;
-      html += renderJurisdictionCard(j, records, today, isActive);
-    }
+    html += `<div class="section-title-row">
+      <div class="section-title-large">Jurisdictions</div>
+      <div class="section-pill">${active.length} active</div>
+    </div>`;
+
+    html += active
+      .map(jurisdiction => {
+        const isActive = location?.jurisdiction?.id === jurisdiction.id;
+        return renderJurisdictionCard(jurisdiction, records, today, isActive);
+      })
+      .join('');
   }
 
-  // Tips
-  html += renderTipsPanel(location?.jurisdiction, records, today);
+  html += renderTipsPanel(tips);
 
   const container = document.getElementById('tab-dashboard');
   container.innerHTML = `<div class="nav-title">Nomad Tracker</div>${html}`;
 
-  // Wire up card clicks
-  container.querySelectorAll('[data-jurisdiction]').forEach(el => {
+  container.querySelectorAll('[data-jurisdiction]').forEach((el) => {
     el.addEventListener('click', () => onCardClick(el.dataset.jurisdiction));
   });
 
-  // Wire up refresh button
-  const refreshBtn = container.querySelector('.refresh-btn');
-  if (refreshBtn) {
-    refreshBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
+  container.querySelectorAll('[data-action="refresh-location"]').forEach((btn) => {
+    btn.addEventListener('click', (event) => {
+      event.stopPropagation();
       document.dispatchEvent(new CustomEvent('refresh-location'));
+    });
+  });
+
+  const installBtn = container.querySelector('[data-action="install-app"]');
+  if (installBtn) {
+    installBtn.addEventListener('click', () => {
+      document.dispatchEvent(new CustomEvent('prompt-install'));
     });
   }
 
-  // Wire up tips toggle
+  const installHelpBtn = container.querySelector('[data-action="show-install-help"]');
+  if (installHelpBtn) {
+    installHelpBtn.addEventListener('click', () => {
+      document.dispatchEvent(new CustomEvent('show-install-help'));
+    });
+  }
+
+  const dismissInstallBtn = container.querySelector('[data-action="dismiss-install-help"]');
+  if (dismissInstallBtn) {
+    dismissInstallBtn.addEventListener('click', () => {
+      document.dispatchEvent(new CustomEvent('dismiss-install-help'));
+    });
+  }
+
   const tipsBtn = container.querySelector('.tips-header');
   if (tipsBtn) {
     tipsBtn.addEventListener('click', () => {
       const list = container.querySelector('.tips-list');
-      const chev = container.querySelector('.tips-chevron');
-      if (list) {
-        list.hidden = !list.hidden;
-        chev?.classList.toggle('collapsed', list.hidden);
-      }
+      const chevron = container.querySelector('.tips-chevron');
+      if (!list) return;
+      list.hidden = !list.hidden;
+      chevron?.classList.toggle('collapsed', list.hidden);
     });
   }
 }
 
+function renderInstallBanner(appContext) {
+  if (!appContext?.showInstallHint) return '';
+
+  const action = appContext.installPromptAvailable ? 'install-app' : 'show-install-help';
+  const actionLabel = appContext.installActionLabel || (appContext.installPromptAvailable ? 'Install App' : 'Install on iPhone');
+
+  return `<div class="install-banner">
+    <div class="install-copy">
+      <div class="install-title">Put Nomad Tracker on your home screen</div>
+      <div class="install-desc">${appContext.installMessage}</div>
+    </div>
+    <div class="install-actions">
+      <button class="install-btn" data-action="${action}">${actionLabel}</button>
+      <button class="install-dismiss" data-action="dismiss-install-help" aria-label="Dismiss install hint">✕</button>
+    </div>
+  </div>`;
+}
+
 function renderLocationHeader(location) {
   if (!location) {
-    return `<div class="card">
+    return `<div class="card location-shell">
       <div class="location-header">
-        <div class="location-flag">\u{1F4CD}</div>
+        <div class="location-flag-shell">📍</div>
         <div class="location-info">
-          <div class="location-city">Detecting location...</div>
-          <div class="location-jurisdiction">Tap refresh to try again</div>
+          <div class="location-label">Current location</div>
+          <div class="location-city">Detecting location…</div>
+          <div class="location-jurisdiction">Allow location and refresh to anchor today’s travel plan.</div>
         </div>
-        <button class="refresh-btn" title="Refresh location">\u{21BB}</button>
+        <button class="refresh-btn" data-action="refresh-location" title="Refresh location">↻</button>
       </div>
     </div>`;
   }
 
-  const flag = countryFlag(location.countryCode);
-  const cityCountry = location.city
-    ? `${location.city}, ${location.country}`
-    : location.country;
-  const jurisdictionName = location.jurisdiction?.name || 'Not a tracked jurisdiction';
+  const cityCountry = location.city ? `${location.city}, ${location.country}` : location.country;
+  const jurisdiction = location.jurisdiction;
+  const liveLabel = location.cached ? 'cached' : 'live';
 
-  return `<div class="card">
+  return `<div class="card location-shell">
     <div class="location-header">
-      <div class="location-flag">${flag}</div>
+      <div class="location-flag-shell">${location.flag || countryFlag(location.countryCode)}</div>
       <div class="location-info">
+        <div class="location-label">Current location</div>
         <div class="location-city">${cityCountry}</div>
-        <div class="location-jurisdiction">${jurisdictionName}</div>
+        <div class="location-jurisdiction">${jurisdiction ? jurisdiction.name : 'Not currently in a tracked jurisdiction'}</div>
       </div>
-      <div class="location-status">
+      <div class="location-meta">
         <div class="location-dot ${location.cached ? 'stale' : ''}"></div>
-        <div class="location-time">${location.cached ? 'cached' : 'live'}</div>
+        <div class="location-time">${liveLabel}</div>
       </div>
-      <button class="refresh-btn" title="Refresh location">\u{21BB}</button>
+      <button class="refresh-btn" data-action="refresh-location" title="Refresh location">↻</button>
+    </div>
+    ${jurisdiction ? `<div class="location-tags">
+      <span class="status-chip">${ruleLabel(jurisdiction)}</span>
+      <span class="status-chip">${jurisdiction.maxDays} days</span>
+    </div>` : ''}
+  </div>`;
+}
+
+function renderSummaryCard(jurisdiction, records, today, location) {
+  if (!jurisdiction) {
+    return `<div class="summary-card summary-safe">
+      <div class="summary-head">
+        <div>
+          <div class="summary-eyebrow">Travel Pulse</div>
+          <div class="summary-title">Ready to start tracking</div>
+          <div class="summary-copy">Enable GPS or add past travel to build a visa timeline that works like an app on your phone.</div>
+        </div>
+        <div class="summary-badge">Setup</div>
+      </div>
+      <div class="summary-metrics">
+        ${metricCard('Tracked', countTrackedJurisdictions(records), 'jurisdictions with history')}
+        ${metricCard('Logged', records.length, 'days recorded total')}
+        ${metricCard('GPS', 'On phone', 'works from browser geolocation')}
+        ${metricCard('Mode', 'PWA', 'installable with home-screen icon')}
+      </div>
+    </div>`;
+  }
+
+  const isCurrent = location?.jurisdiction?.id === jurisdiction.id;
+  const urgency = rules.urgencyLevel(jurisdiction, records, today);
+  const daysUsed = rules.daysUsed(jurisdiction, records, today);
+  const daysRemaining = rules.daysRemaining(jurisdiction, records, today);
+  const leaveBy = rules.mustLeaveBy(jurisdiction, records, today);
+  const nextFallOff = rules.nextDayFallsOff(jurisdiction, records, today);
+  const extraDays = rules.projectedExtraDays(jurisdiction, records, today);
+  const fullReset = rules.fullAllowanceResetDate(jurisdiction, records, today);
+  const recommendationAnchor = location?.jurisdiction || jurisdiction;
+  const recommendations = recommendedDestinations(recommendationAnchor, records, today).slice(0, 3);
+
+  let subheadline = `${daysRemaining} days left right now, with a projected stay through ${formatDateLong(leaveBy)}.`;
+  if (!isCurrent && daysUsed === 0) {
+    subheadline = `No active days are currently counting here. This is your strongest historical jurisdiction so you can keep planning from it.`;
+  } else if (!isCurrent) {
+    subheadline = `${daysRemaining} days are currently available here based on your recorded history, with a projected stay through ${formatDateLong(leaveBy)}.`;
+  } else if (leaveBy === today) {
+    subheadline = `Today is your last legal day in ${jurisdiction.name} unless older days fall out of the window overnight.`;
+  }
+
+  const summaryEyebrow = isCurrent ? 'Live Plan' : 'Recent History';
+  const summaryTitle = isCurrent
+    ? `Currently in ${jurisdiction.emoji} ${jurisdiction.name}`
+    : `Travel Pulse for ${jurisdiction.emoji} ${jurisdiction.name}`;
+  const summaryBadge = isCurrent ? urgencyLabel(urgency) : (daysUsed > 0 ? 'Tracked' : 'Open');
+
+  return `<div class="summary-card summary-${urgency}">
+    <div class="summary-head">
+      <div>
+        <div class="summary-eyebrow">${summaryEyebrow}</div>
+        <div class="summary-title">${summaryTitle}</div>
+        <div class="summary-copy">${subheadline}</div>
+      </div>
+      <div class="summary-badge">${summaryBadge}</div>
+    </div>
+
+    <div class="summary-metrics">
+      ${metricCard('Remaining', daysRemaining, 'days currently open')}
+      ${metricCard('Leave By', formatMonthDay(leaveBy), 'continuous stay projection')}
+      ${metricCard('Tracked', countTrackedJurisdictions(records), 'jurisdictions with history')}
+      ${metricCard('Logged', records.length, 'days recorded in total')}
+    </div>
+
+    ${(nextFallOff || extraDays > 0 || fullReset) ? `<div class="planning-block">
+      <div class="planning-title">Planning Horizon</div>
+      ${nextFallOff ? planningRow(
+        nextFallOff.count === 1 ? '1 day falls off next' : `${nextFallOff.count} days fall off next`,
+        `Window relief starts on ${formatDateLong(nextFallOff.date)}.`
+      ) : ''}
+      ${extraDays > 0 ? planningRow(
+        `Your runway extends by about ${extraDays} days`,
+        'Older days should expire from the rolling window while you stay.'
+      ) : ''}
+      ${fullReset ? planningRow(
+        `Full allowance restores on ${formatDateLong(fullReset)}`,
+        'That is the earliest date you would regain a clean slate if you left now.'
+      ) : ''}
+    </div>` : ''}
+
+    ${recommendations.length ? `<div class="recommendations-block">
+      <div class="planning-title">Good Next Moves</div>
+      ${recommendations.map(item => `
+        <div class="recommendation-row">
+          <div class="recommendation-emoji">${item.jurisdiction.emoji}</div>
+          <div class="recommendation-copy">
+            <div class="recommendation-name">${item.jurisdiction.name}</div>
+            <div class="recommendation-note">${item.reason}</div>
+          </div>
+          <div class="recommendation-days">${item.daysRemaining}d</div>
+        </div>
+      `).join('')}
+    </div>` : ''}
+  </div>`;
+}
+
+function renderEmptyState() {
+  return `<div class="empty-state card empty-card">
+    <div class="empty-icon">🌍</div>
+    <div class="empty-title">No jurisdictions tracked yet</div>
+    <div class="empty-desc">Your location will be detected automatically, or you can add past travel manually in Settings.</div>
+  </div>`;
+}
+
+function renderJurisdictionCard(jurisdiction, records, today, isActive) {
+  const used = rules.daysUsed(jurisdiction, records, today);
+  const remaining = rules.daysRemaining(jurisdiction, records, today);
+  const urgency = rules.urgencyLevel(jurisdiction, records, today);
+  const max = jurisdiction.maxDays;
+  const leaveBy = used > 0 ? rules.mustLeaveBy(jurisdiction, records, today) : null;
+  const extra = rules.projectedExtraDays(jurisdiction, records, today);
+  const fullReset = rules.fullAllowanceResetDate(jurisdiction, records, today);
+  const pct = Math.min(100, (used / max) * 100);
+
+  if (isActive) {
+    return `<div class="card card-active border-${urgency}" data-jurisdiction="${jurisdiction.id}">
+      <div class="active-card-head">
+        <div>
+          <div class="active-card-title">${jurisdiction.emoji} ${jurisdiction.name}</div>
+          <div class="active-card-tags">
+            <span class="active-badge bg-${urgency}">ACTIVE</span>
+            <span class="rule-chip">${ruleLabel(jurisdiction)}</span>
+          </div>
+        </div>
+        <div class="active-days-left urgency-${urgency}">
+          <div class="active-days-number">${remaining}</div>
+          <div class="active-days-label">days left</div>
+        </div>
+      </div>
+
+      <div class="active-card-body">
+        ${renderProgressRing(used, max, urgency, 102)}
+        <div class="active-card-stats">
+          ${statRow('Used', `${used}/${max} days`)}
+          ${leaveBy ? statRow('Stay until', formatDateLong(leaveBy)) : ''}
+          ${fullReset ? statRow('Full reset', formatMonthDay(fullReset)) : ''}
+        </div>
+      </div>
+
+      <div class="progress-bar">
+        <div class="progress-bar-fill" style="width:${pct}%;background:var(--${urgencyColor(urgency)})"></div>
+      </div>
+
+      ${extra > 0 ? `<div class="active-projection">${extra} older day${extra === 1 ? '' : 's'} should expire while you stay, extending your runway.</div>` : ''}
+    </div>`;
+  }
+
+  return `<div class="card compact-card" data-jurisdiction="${jurisdiction.id}">
+    <div class="compact-icon urgency-bg-${urgency}">${jurisdiction.emoji}</div>
+    <div class="compact-info">
+      <div class="compact-name">${jurisdiction.name}</div>
+      <div class="compact-sub">${used}/${max} days • ${ruleLabel(jurisdiction)}</div>
+    </div>
+    <div class="compact-remaining urgency-${urgency}">${remaining}</div>
+    <div class="compact-chevron">›</div>
+  </div>`;
+}
+
+function renderTipsPanel(tips) {
+  if (!tips.length) return '';
+  const expanded = tips.some((tip) => tip.priority !== 'low');
+
+  return `<div class="card tips-shell">
+    <button class="tips-header">
+      <div>
+        <div class="tips-header-row"><span class="tips-header-icon">💡</span><span class="tips-header-text">Tips & Suggestions</span></div>
+        <div class="tips-subtitle">${tips.length} tailored for your current travel pattern</div>
+      </div>
+      <span class="tips-chevron ${expanded ? '' : 'collapsed'}">▼</span>
+    </button>
+    <div class="tips-list" ${expanded ? '' : 'hidden'}>
+      ${tips.slice(0, 6).map(renderTipRow).join('')}
     </div>
   </div>`;
+}
+
+function renderTipRow(tip) {
+  return `<div class="tip-card">
+    <div class="tip-icon-shell priority-${tip.priority}">${tipEmoji(tip.icon)}</div>
+    <div class="tip-main">
+      <div class="tip-topline">
+        <div class="tip-title">${tip.title}</div>
+        <div class="tip-priority priority-${tip.priority}">${priorityLabel(tip.priority)}</div>
+      </div>
+      <div class="tip-message">${tip.message}</div>
+    </div>
+  </div>`;
+}
+
+function recommendedDestinations(currentJurisdiction, records, today) {
+  return ALL_JURISDICTIONS
+    .filter(jurisdiction => jurisdiction.id !== currentJurisdiction?.id)
+    .map(jurisdiction => {
+      const daysRemaining = rules.daysRemaining(jurisdiction, records, today);
+      const used = rules.daysUsed(jurisdiction, records, today);
+      const score = daysRemaining + Math.floor(jurisdiction.maxDays / 10) + (used === 0 ? 25 : 0);
+      return {
+        jurisdiction,
+        daysRemaining,
+        reason: recommendationReason(jurisdiction, daysRemaining),
+        score,
+      };
+    })
+    .filter(item => item.daysRemaining > 0)
+    .sort((a, b) => b.score - a.score || a.jurisdiction.name.localeCompare(b.jurisdiction.name));
+}
+
+function recommendationReason(jurisdiction, remaining) {
+  switch (jurisdiction.id) {
+    case 'georgia':
+      return '365 days per entry and a top Schengen cooldown base';
+    case 'uk':
+      return '180 days per visit if you need a long reset window';
+    case 'albania':
+    case 'montenegro':
+    case 'serbia':
+    case 'turkey':
+      return `${remaining} days currently open outside the Schengen pool`;
+    case 'colombia':
+      return `Calendar-year counter with ${remaining} days left this year`;
+    default:
+      if (jurisdiction.ruleType === 'perVisit') return `${jurisdiction.maxDays} fresh days on your next entry`;
+      if (jurisdiction.ruleType === 'rolling') return `${remaining} days open in its ${jurisdiction.windowDays}-day window`;
+      return `${remaining} days left this calendar year`;
+  }
 }
 
 function getActiveJurisdictions(location, records, today) {
   const activeIds = new Set(records.map(r => r.jurisdictionId));
   const active = ALL_JURISDICTIONS.filter(j => activeIds.has(j.id));
 
-  if (location?.jurisdiction && !active.find(j => j.id === location.jurisdiction.id)) {
+  if (location?.jurisdiction && !active.some(j => j.id === location.jurisdiction.id)) {
     active.unshift(location.jurisdiction);
   }
 
-  // Sort: current first, then by days used descending
   active.sort((a, b) => {
     if (a.id === location?.jurisdiction?.id) return -1;
     if (b.id === location?.jurisdiction?.id) return 1;
@@ -117,68 +381,106 @@ function getActiveJurisdictions(location, records, today) {
   return active;
 }
 
-function renderJurisdictionCard(jurisdiction, records, today, isActive) {
-  const used = rules.daysUsed(jurisdiction, records, today);
-  const remaining = rules.daysRemaining(jurisdiction, records, today);
-  const urgency = rules.urgencyLevel(jurisdiction, records, today);
-  const max = jurisdiction.maxDays;
+function countTrackedJurisdictions(records) {
+  return new Set(records.map(r => r.jurisdictionId)).size;
+}
 
-  if (isActive) {
-    const leaveBy = used > 0 ? rules.mustLeaveBy(jurisdiction, records, today) : null;
-    const extra = rules.projectedExtraDays(jurisdiction, records, today);
-    const pct = Math.min(100, (used / max) * 100);
-
-    return `<div class="card card-active border-${urgency}" data-jurisdiction="${jurisdiction.id}">
-      <div class="j-card-expanded">
-        <div class="j-card-header">
-          <span class="j-card-emoji">${jurisdiction.emoji}</span>
-          <span class="j-card-name">${jurisdiction.name}</span>
-          <span class="active-badge bg-${urgency}">ACTIVE</span>
-        </div>
-        ${renderProgressRing(used, max, urgency, 110)}
-        <div class="j-card-stats">
-          <div class="j-card-remaining urgency-${urgency}">${remaining} days remaining</div>
-          <div class="j-card-rule">${ruleLabel(jurisdiction)}</div>
-          ${leaveBy ? `<div class="j-card-leave">Can stay until ${formatDate(leaveBy)}</div>` : ''}
-          ${extra > 0 ? `<div class="j-card-projected">${extra} older day${extra === 1 ? '' : 's'} should fall off while you stay</div>` : ''}
-        </div>
-        <div class="progress-bar" style="margin-top:12px">
-          <div class="progress-bar-fill" style="width:${pct}%;background:var(--${urgencyColor(urgency)})"></div>
-        </div>
-      </div>
-    </div>`;
-  }
-
-  // Compact card
-  return `<div class="card" data-jurisdiction="${jurisdiction.id}">
-    <div class="j-card-compact">
-      <span class="j-card-emoji">${jurisdiction.emoji}</span>
-      <div class="j-card-compact-info">
-        <div class="j-card-compact-name">${jurisdiction.name}</div>
-        <div class="j-card-compact-sub">${used}/${max} days \u2022 ${ruleLabel(jurisdiction)}</div>
-      </div>
-      <span class="j-card-compact-count urgency-${urgency}">${remaining}</span>
-      <span class="j-card-compact-left">left</span>
-    </div>
+function metricCard(label, value, note) {
+  return `<div class="summary-metric">
+    <div class="summary-metric-label">${label}</div>
+    <div class="summary-metric-value">${value}</div>
+    <div class="summary-metric-note">${note}</div>
   </div>`;
 }
 
+function planningRow(title, detail) {
+  return `<div class="planning-row">
+    <div class="planning-row-title">${title}</div>
+    <div class="planning-row-detail">${detail}</div>
+  </div>`;
+}
+
+function statRow(label, value) {
+  return `<div class="stat-row">
+    <div class="stat-row-label">${label}</div>
+    <div class="stat-row-value">${value}</div>
+  </div>`;
+}
+
+function urgencyLabel(urgency) {
+  switch (urgency) {
+    case 'safe': return 'Comfortable';
+    case 'caution': return 'Caution';
+    case 'warning': return 'Watchlist';
+    case 'critical': return 'Action Now';
+    case 'expired': return 'Expired';
+    default: return 'Status';
+  }
+}
+
+function priorityLabel(priority) {
+  switch (priority) {
+    case 'critical': return 'Now';
+    case 'high': return 'High';
+    case 'medium': return 'Soon';
+    default: return 'Info';
+  }
+}
+
+function tipEmoji(icon) {
+  const symbols = {
+    'exclamation-triangle-fill': '⚠️',
+    'exclamation-triangle': '⚠︎',
+    clock: '🕒',
+    'check-circle': '✅',
+    'arrow-counterclockwise': '🔄',
+    calendar: '📅',
+    airplane: '✈️',
+    'info-circle': 'ℹ️',
+    star: '⭐',
+    building: '🏛️',
+    'exclamation-circle': '❗',
+    sparkles: '✨',
+  };
+
+  return symbols[icon] || '💡';
+}
+
+function urgencyColor(urgency) {
+  return {
+    safe: 'green',
+    caution: 'yellow',
+    warning: 'orange',
+    critical: 'red',
+    expired: 'red',
+  }[urgency] || 'green';
+}
+
+function formatMonthDay(dateStr) {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(year, month - 1, day).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function formatDateLong(dateStr) {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(year, month - 1, day).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+}
+
 export function renderProgressRing(used, total, urgency, size) {
-  const r = size * 0.38;
-  const circumference = 2 * Math.PI * r;
-  const pct = total > 0 ? Math.min(1, used / total) : 0;
-  const offset = circumference * (1 - pct);
+  const radius = size * 0.38;
+  const circumference = 2 * Math.PI * radius;
+  const progress = total > 0 ? Math.min(1, used / total) : 0;
+  const offset = circumference * (1 - progress);
   const color = `var(--${urgencyColor(urgency)})`;
-  const trackOpacity = 'var(--ring-track)';
   const strokeWidth = size * 0.12;
   const center = size / 2;
   const textSize = size * 0.28;
   const subSize = size * 0.12;
 
   return `<svg class="progress-ring" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
-    <circle class="progress-ring-track" cx="${center}" cy="${center}" r="${r}"
-      stroke="${color}" stroke-opacity="${trackOpacity}" stroke-width="${strokeWidth}" />
-    <circle class="progress-ring-fill" cx="${center}" cy="${center}" r="${r}"
+    <circle class="progress-ring-track" cx="${center}" cy="${center}" r="${radius}"
+      stroke="${color}" stroke-opacity="var(--ring-track)" stroke-width="${strokeWidth}" />
+    <circle class="progress-ring-fill" cx="${center}" cy="${center}" r="${radius}"
       stroke="${color}" stroke-width="${strokeWidth}"
       stroke-dasharray="${circumference}" stroke-dashoffset="${offset}"
       transform="rotate(-90 ${center} ${center})" />
@@ -187,123 +489,4 @@ export function renderProgressRing(used, total, urgency, size) {
     <text class="progress-ring-sub" x="${center}" y="${center + subSize + 2}" text-anchor="middle"
       font-size="${subSize}">of ${total}</text>
   </svg>`;
-}
-
-function renderTipsPanel(currentJurisdiction, records, today) {
-  // Inline tips generation to avoid circular module issues
-  const tips = generateTipsInline(currentJurisdiction, records, today);
-  if (tips.length === 0) return '';
-
-  const rows = tips.slice(0, 5).map(t => `
-    <div class="tip-row">
-      <div class="tip-icon">${tipIcon(t.icon, t.priority)}</div>
-      <div class="tip-content">
-        <div class="tip-title">${t.title}</div>
-        <div class="tip-message">${t.message}</div>
-      </div>
-    </div>
-  `).join('');
-
-  return `<div class="card">
-    <button class="tips-header">
-      <span class="tips-header-icon">\u{1F4A1}</span>
-      <span class="tips-header-text">Tips & Suggestions</span>
-      <span class="tips-chevron">\u25BC</span>
-    </button>
-    <div class="tips-list">${rows}</div>
-  </div>`;
-}
-
-// Inline tips to avoid async module loading issues
-function generateTipsInline(currentJurisdiction, records, today) {
-  // Import tips engine dynamically isn't needed since we can inline
-  const tips = [];
-
-  if (currentJurisdiction) {
-    const remaining = rules.daysRemaining(currentJurisdiction, records, today);
-    const used = rules.daysUsed(currentJurisdiction, records, today);
-    const max = currentJurisdiction.maxDays;
-
-    if (used > 0) {
-      const leaveBy = rules.mustLeaveBy(currentJurisdiction, records, today);
-      const leaveDate = formatDate(leaveBy);
-
-      if (remaining <= 7) {
-        tips.push({ icon: 'exclamation-triangle-fill', title: `Leave ${currentJurisdiction.name} by ${leaveDate}`, message: `Only ${remaining} day${remaining === 1 ? '' : 's'} remaining! Book your departure now.`, priority: 'critical', category: 'deadline' });
-      } else if (remaining <= 14) {
-        tips.push({ icon: 'exclamation-triangle', title: `${remaining} days remaining in ${currentJurisdiction.name}`, message: `Start planning your departure. Must leave by ${leaveDate}.`, priority: 'high', category: 'deadline' });
-      } else if (remaining <= 30) {
-        tips.push({ icon: 'clock', title: `${remaining} days remaining`, message: `Can stay until ${leaveDate} if you remain continuously.`, priority: 'medium', category: 'deadline' });
-      } else {
-        tips.push({ icon: 'check-circle', title: `Comfortable in ${currentJurisdiction.name}`, message: `${remaining} of ${max} days remaining. Can stay until ${leaveDate}.`, priority: 'low', category: 'status' });
-      }
-    }
-
-    const fallOff = rules.nextDayFallsOff(currentJurisdiction, records, today);
-    if (fallOff) {
-      tips.push({ icon: 'arrow-counterclockwise', title: 'Days falling off the window', message: `${fallOff.count} day${fallOff.count === 1 ? '' : 's'} will fall off on ${formatDate(fallOff.date)}, giving you more allowance.`, priority: 'low', category: 'info' });
-    }
-
-    if (currentJurisdiction.ruleType === 'calendarYear') {
-      const resetDate = rules.calendarYearResetDate(today);
-      tips.push({ icon: 'calendar', title: `Counter resets ${formatDate(resetDate)}`, message: 'Calendar year system. Day count resets to 0 on January 1.', priority: 'low', category: 'info' });
-    }
-  }
-
-  // Schengen exit suggestions
-  if (currentJurisdiction?.id === 'schengen') {
-    const schengen = ALL_JURISDICTIONS.find(j => j.id === 'schengen');
-    const remaining = rules.daysRemaining(schengen, records, today);
-    if (remaining <= 30) {
-      tips.push({ icon: 'airplane', title: 'Plan your Schengen exit', message: 'Consider: Georgia (365 days!), Albania (90), Montenegro (90), Turkey (90), or UK (180).', priority: 'high', category: 'suggestion' });
-    }
-    tips.push({ icon: 'info-circle', title: 'Schengen rolling window', message: "90/180 rule uses a rolling window. A 1-day trip outside doesn't meaningfully help.", priority: 'low', category: 'info' });
-  }
-
-  // Georgia promotion
-  if (currentJurisdiction?.id !== 'georgia') {
-    const georgia = ALL_JURISDICTIONS.find(j => j.id === 'georgia');
-    if (rules.daysUsed(georgia, records, today) === 0) {
-      tips.push({ icon: 'star', title: 'Georgia: 365 days visa-free', message: 'Perfect for a Schengen cooldown. Vibrant nomad community in Tbilisi.', priority: 'low', category: 'suggestion' });
-    }
-  }
-
-  // Montenegro registration
-  if (currentJurisdiction?.id === 'montenegro') {
-    tips.push({ icon: 'building', title: 'Register within 24 hours', message: 'Register with police within 24hrs. Hotels do it automatically. For Airbnbs, you must do it yourself.', priority: 'high', category: 'action' });
-  }
-
-  const priorityOrder = { critical: 3, high: 2, medium: 1, low: 0 };
-  tips.sort((a, b) => priorityOrder[b.priority] - priorityOrder[a.priority]);
-  return tips;
-}
-
-function tipIcon(icon, priority) {
-  const colors = { critical: 'var(--red)', high: 'var(--orange)', medium: 'var(--yellow)', low: 'var(--accent)' };
-  const color = colors[priority] || 'var(--accent)';
-  const symbols = {
-    'exclamation-triangle-fill': '\u26A0\uFE0F',
-    'exclamation-triangle': '\u26A0',
-    'clock': '\u{1F552}',
-    'check-circle': '\u2705',
-    'arrow-counterclockwise': '\u{1F504}',
-    'calendar': '\u{1F4C5}',
-    'airplane': '\u2708\uFE0F',
-    'info-circle': '\u2139\uFE0F',
-    'star': '\u2B50',
-    'building': '\u{1F3DB}\uFE0F',
-    'exclamation-circle': '\u2757',
-  };
-  return symbols[icon] || '\u{1F4A1}';
-}
-
-function urgencyColor(urgency) {
-  const map = { safe: 'green', caution: 'yellow', warning: 'orange', critical: 'red', expired: 'red' };
-  return map[urgency] || 'green';
-}
-
-function formatDate(dateStr) {
-  const [y, m, d] = dateStr.split('-').map(Number);
-  const date = new Date(y, m - 1, d);
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }

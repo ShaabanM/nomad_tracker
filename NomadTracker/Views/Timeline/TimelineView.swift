@@ -14,6 +14,8 @@ struct TimelineView: View {
                     // Month selector
                     monthSelector
 
+                    monthInsights
+
                     // Calendar grid
                     calendarGrid
 
@@ -77,7 +79,7 @@ struct TimelineView: View {
         return VStack(spacing: 4) {
             // Day headers
             HStack(spacing: 4) {
-                ForEach(["S", "M", "T", "W", "T", "F", "S"], id: \.self) { day in
+                ForEach(Array(["S", "M", "T", "W", "T", "F", "S"].enumerated()), id: \.offset) { _, day in
                     Text(day)
                         .font(.caption2.weight(.medium))
                         .foregroundStyle(.secondary)
@@ -121,6 +123,23 @@ struct TimelineView: View {
         return components.year == todayComponents.year
             && components.month == todayComponents.month
             && day == todayComponents.day
+    }
+
+    private var monthInsights: some View {
+        let monthRecords = viewModel.records(for: selectedMonth)
+        let uniqueDays = Set(monthRecords.map { calendar.startOfDay(for: $0.date) }).count
+        let jurisdictionCount = Set(monthRecords.map(\.jurisdictionId)).count
+        let manualDays = Set(
+            monthRecords
+                .filter { $0.recordSource == .manual }
+                .map { calendar.startOfDay(for: $0.date) }
+        ).count
+
+        return HStack(spacing: 10) {
+            MonthInsightTile(title: "Days", value: "\(uniqueDays)", note: "logged this month")
+            MonthInsightTile(title: "Places", value: "\(jurisdictionCount)", note: "jurisdictions visited")
+            MonthInsightTile(title: "Manual", value: "\(manualDays)", note: "days added manually")
+        }
     }
 
     // MARK: - Monthly Summary
@@ -214,5 +233,27 @@ struct CalendarDayCell: View {
         case "uae": return .green
         default: return .gray
         }
+    }
+}
+
+private struct MonthInsightTile: View {
+    let title: String
+    let value: String
+    let note: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.title3.weight(.bold).monospacedDigit())
+            Text(note)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 }

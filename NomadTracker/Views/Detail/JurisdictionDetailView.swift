@@ -23,6 +23,10 @@ struct JurisdictionDetailView: View {
                 // Rule explanation
                 ruleCard
 
+                if planningSignalsAvailable {
+                    planningCard
+                }
+
                 // Notes
                 if !jurisdiction.notes.isEmpty {
                     notesCard
@@ -68,10 +72,20 @@ struct JurisdictionDetailView: View {
     // MARK: - Status Card
 
     private var statusCard: some View {
-        VStack(spacing: 16) {
+        VStack(alignment: .leading, spacing: 18) {
             HStack {
-                Text(jurisdiction.emoji)
-                    .font(.largeTitle)
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 10) {
+                        Text(jurisdiction.emoji)
+                            .font(.largeTitle)
+                        Text(jurisdiction.name)
+                            .font(.title2.weight(.bold))
+                    }
+
+                    Text(jurisdiction.ruleType.ruleLabel)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
                 Spacer()
 
                 if jurisdiction.id == viewModel.locationService.currentJurisdiction?.id {
@@ -84,22 +98,32 @@ struct JurisdictionDetailView: View {
                 }
             }
 
-            ProgressRing(
-                used: viewModel.daysUsed(for: jurisdiction),
-                total: jurisdiction.ruleType.maxDays,
-                urgency: viewModel.urgencyLevel(for: jurisdiction),
-                size: 150
-            )
+            HStack(spacing: 18) {
+                ProgressRing(
+                    used: viewModel.daysUsed(for: jurisdiction),
+                    total: jurisdiction.ruleType.maxDays,
+                    urgency: viewModel.urgencyLevel(for: jurisdiction),
+                    size: 130
+                )
 
-            VStack(spacing: 4) {
-                Text("\(viewModel.daysRemaining(for: jurisdiction)) days remaining")
-                    .font(.title2.weight(.bold))
+                VStack(alignment: .leading, spacing: 10) {
+                    detailMetric(
+                        title: "Remaining",
+                        value: "\(viewModel.daysRemaining(for: jurisdiction)) days"
+                    )
 
-                if let leaveBy = viewModel.mustLeaveBy(for: jurisdiction),
-                   viewModel.daysUsed(for: jurisdiction) > 0 {
-                    Text("Can stay until \(leaveBy, format: .dateTime.month(.wide).day().year())")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                    detailMetric(
+                        title: "Used",
+                        value: "\(viewModel.daysUsed(for: jurisdiction))/\(jurisdiction.ruleType.maxDays)"
+                    )
+
+                    if let leaveBy = viewModel.mustLeaveBy(for: jurisdiction),
+                       viewModel.daysUsed(for: jurisdiction) > 0 {
+                        detailMetric(
+                            title: "Projected stay",
+                            value: leaveBy.formatted(.dateTime.month(.abbreviated).day().year())
+                        )
+                    }
                 }
             }
 
@@ -148,6 +172,53 @@ struct JurisdictionDetailView: View {
                 Text("All days in a calendar year count toward the \(max)-day limit. Resets on January 1. Leaving and re-entering does NOT reset the counter.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+        }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+    }
+
+    private var planningSignalsAvailable: Bool {
+        viewModel.mustLeaveBy(for: jurisdiction) != nil
+            || viewModel.fullAllowanceResetDate(for: jurisdiction) != nil
+            || viewModel.nextDayFallsOff(for: jurisdiction) != nil
+            || viewModel.projectedExtraDaysFromWindowExpiry(for: jurisdiction) > 0
+    }
+
+    private var planningCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Planning", systemImage: "calendar.badge.clock")
+                .font(.headline)
+
+            if let leaveBy = viewModel.mustLeaveBy(for: jurisdiction),
+               viewModel.daysUsed(for: jurisdiction) > 0 {
+                planningRow(
+                    title: "Projected continuous stay",
+                    detail: "If you remain here, your current history supports staying until \(leaveBy.formatted(.dateTime.month(.wide).day().year()))."
+                )
+            }
+
+            if let fallOff = viewModel.nextDayFallsOff(for: jurisdiction) {
+                planningRow(
+                    title: fallOff.count == 1 ? "1 day falls off next" : "\(fallOff.count) days fall off next",
+                    detail: "The next rolling-window relief happens on \(fallOff.date.formatted(.dateTime.month(.wide).day().year()))."
+                )
+            }
+
+            let extraDays = viewModel.projectedExtraDaysFromWindowExpiry(for: jurisdiction)
+            if extraDays > 0 {
+                planningRow(
+                    title: "Runway extends by about \(extraDays) days",
+                    detail: "Older days should age out of the rolling window while you stay, so your legal exit date moves out."
+                )
+            }
+
+            if let resetDate = viewModel.fullAllowanceResetDate(for: jurisdiction) {
+                planningRow(
+                    title: "Full allowance resets on \(resetDate.formatted(.dateTime.month(.wide).day().year()))",
+                    detail: "That is the earliest date you would be back to a clean slate if you departed today."
+                )
             }
         }
         .padding()
@@ -257,6 +328,29 @@ struct JurisdictionDetailView: View {
             }
         }
         .padding(.vertical)
+    }
+
+    private func detailMetric(title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.subheadline.weight(.semibold))
+        }
+    }
+
+    private func planningRow(title: String, detail: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+            Text(detail)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(12)
+        .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 }
 

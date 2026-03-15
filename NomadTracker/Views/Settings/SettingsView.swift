@@ -95,16 +95,23 @@ struct SettingsView: View {
                     }
 
                     HStack {
-                        Text("Tracked jurisdictions")
+                        Text("Supported jurisdictions")
                         Spacer()
                         Text("\(Jurisdiction.all.count)")
                             .foregroundStyle(.secondary)
                     }
 
                     HStack {
+                        Text("Tracked now")
+                        Spacer()
+                        Text("\(viewModel.trackedJurisdictionCount)")
+                            .foregroundStyle(.secondary)
+                    }
+
+                    HStack {
                         Text("Total days logged")
                         Spacer()
-                        Text("\(viewModel.records.count)")
+                        Text("\(viewModel.totalLoggedDays)")
                             .foregroundStyle(.secondary)
                     }
                 }

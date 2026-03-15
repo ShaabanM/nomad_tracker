@@ -6,39 +6,75 @@ struct DashboardView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 16) {
-                    // Current location
-                    CurrentLocationHeader(locationService: viewModel.locationService)
+            ZStack {
+                LinearGradient(
+                    colors: [
+                        Color(.systemGroupedBackground),
+                        Color(.secondarySystemGroupedBackground)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .ignoresSafeArea()
 
-                    // Active jurisdiction cards
-                    if viewModel.activeJurisdictions.isEmpty {
-                        emptyState
-                    } else {
-                        LazyVStack(spacing: 12) {
-                            ForEach(viewModel.activeJurisdictions) { jurisdiction in
-                                NavigationLink(value: jurisdiction.id) {
-                                    JurisdictionCard(
-                                        jurisdiction: jurisdiction,
-                                        daysUsed: viewModel.daysUsed(for: jurisdiction),
-                                        daysRemaining: viewModel.daysRemaining(for: jurisdiction),
-                                        urgency: viewModel.urgencyLevel(for: jurisdiction),
-                                        isActive: jurisdiction.id == viewModel.locationService.currentJurisdiction?.id,
-                                        mustLeaveBy: viewModel.mustLeaveBy(for: jurisdiction)
-                                    )
+                ScrollView {
+                    VStack(spacing: 18) {
+                        CurrentLocationHeader(locationService: viewModel.locationService)
+
+                        DashboardSummaryCard(
+                            jurisdiction: summaryJurisdiction,
+                            urgency: summaryJurisdiction.map { viewModel.urgencyLevel(for: $0) } ?? .safe,
+                            daysUsed: summaryJurisdiction.map { viewModel.daysUsed(for: $0) } ?? 0,
+                            daysRemaining: summaryJurisdiction.map { viewModel.daysRemaining(for: $0) } ?? 0,
+                            leaveBy: summaryJurisdiction.flatMap { viewModel.mustLeaveBy(for: $0) },
+                            projectedExtraDays: summaryJurisdiction.map { viewModel.projectedExtraDaysFromWindowExpiry(for: $0) } ?? 0,
+                            nextFallOff: summaryJurisdiction.flatMap { viewModel.nextDayFallsOff(for: $0) },
+                            fullResetDate: summaryJurisdiction.flatMap { viewModel.fullAllowanceResetDate(for: $0) },
+                            trackedJurisdictions: viewModel.trackedJurisdictionCount,
+                            totalLoggedDays: viewModel.totalLoggedDays,
+                            recommendations: viewModel.recommendedDestinations()
+                        )
+
+                        if viewModel.activeJurisdictions.isEmpty {
+                            emptyState
+                        } else {
+                            VStack(alignment: .leading, spacing: 12) {
+                                HStack {
+                                    Text("Jurisdictions")
+                                        .font(.headline)
+                                    Spacer()
+                                    Text("\(viewModel.activeJurisdictions.count) active")
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(.secondary)
                                 }
-                                .buttonStyle(.plain)
+
+                                LazyVStack(spacing: 12) {
+                                    ForEach(viewModel.activeJurisdictions) { jurisdiction in
+                                        NavigationLink(value: jurisdiction.id) {
+                                            JurisdictionCard(
+                                                jurisdiction: jurisdiction,
+                                                daysUsed: viewModel.daysUsed(for: jurisdiction),
+                                                daysRemaining: viewModel.daysRemaining(for: jurisdiction),
+                                                urgency: viewModel.urgencyLevel(for: jurisdiction),
+                                                isActive: jurisdiction.id == viewModel.locationService.currentJurisdiction?.id,
+                                                mustLeaveBy: viewModel.mustLeaveBy(for: jurisdiction),
+                                                projectedExtraDays: viewModel.projectedExtraDaysFromWindowExpiry(for: jurisdiction),
+                                                fullResetDate: viewModel.fullAllowanceResetDate(for: jurisdiction)
+                                            )
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                }
                             }
                         }
+
+                        TipsPanel(tips: viewModel.tips)
+
+                        Spacer(minLength: 24)
                     }
-
-                    // Tips
-                    TipsPanel(tips: viewModel.tips)
-
-                    // Spacer for tab bar
-                    Spacer(minLength: 20)
+                    .padding(.horizontal)
+                    .padding(.top, 8)
                 }
-                .padding(.horizontal)
             }
             .navigationTitle("Nomad Tracker")
             .navigationDestination(for: String.self) { jurisdictionId in
@@ -52,6 +88,10 @@ struct DashboardView: View {
                 viewModel.refreshTips()
             }
         }
+    }
+
+    private var summaryJurisdiction: Jurisdiction? {
+        viewModel.currentDashboardJurisdiction
     }
 
     private var emptyState: some View {
@@ -68,6 +108,9 @@ struct DashboardView: View {
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 24)
         .padding(.vertical, 40)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 }

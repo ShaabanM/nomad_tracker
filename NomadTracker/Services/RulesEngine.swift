@@ -40,9 +40,95 @@ struct RulesEngine {
 
     /// Calculate the date when you must leave (if staying continuously from today)
     func mustLeaveBy(for jurisdiction: Jurisdiction, records: [StayRecord], asOf date: Date = .now) -> Date? {
-        let remaining = daysRemaining(for: jurisdiction, records: records, asOf: date)
-        guard remaining > 0 else { return date }
-        return calendar.date(byAdding: .day, value: remaining, to: calendar.startOfDay(for: date))
+        let stayableDays = continuousStayDaysAvailable(for: jurisdiction, records: records, asOf: date)
+        let today = calendar.startOfDay(for: date)
+
+        guard stayableDays > 0 else { return today }
+        return calendar.date(byAdding: .day, value: stayableDays - 1, to: today)
+    }
+
+    /// Calculate how many continuous days you can legally stay starting today.
+    func continuousStayDaysAvailable(
+        for jurisdiction: Jurisdiction,
+        records: [StayRecord],
+        asOf date: Date = .now
+    ) -> Int {
+        let today = calendar.startOfDay(for: date)
+        let relevantRecords = records.filter { $0.jurisdictionId == jurisdiction.id }
+        let isPresentToday = relevantRecords.contains {
+            calendar.isDate($0.date, inSameDayAs: today)
+        }
+
+        switch jurisdiction.ruleType {
+        case .rolling(let maxDays, let windowDays):
+            return projectedRollingStayDays(
+                records: relevantRecords,
+                maxDays: maxDays,
+                windowDays: windowDays,
+                asOf: today
+            )
+
+        case .perVisit(let maxDays):
+            let used = daysInCurrentVisit(records: relevantRecords, asOf: today)
+            let inclusiveDays = isPresentToday ? (maxDays - used + 1) : (maxDays - used)
+            return max(0, inclusiveDays)
+
+        case .calendarYear(let maxDays):
+            let used = daysInCalendarYear(records: relevantRecords, asOf: today)
+            let inclusiveDays = isPresentToday ? (maxDays - used + 1) : (maxDays - used)
+            return max(0, inclusiveDays)
+        }
+    }
+
+    /// For rolling windows, quantify how much older days extend a continuous stay.
+    func projectedExtraDaysFromWindowExpiry(
+        for jurisdiction: Jurisdiction,
+        records: [StayRecord],
+        asOf date: Date = .now
+    ) -> Int {
+        guard case .rolling = jurisdiction.ruleType else { return 0 }
+
+        let today = calendar.startOfDay(for: date)
+        let relevantRecords = records.filter { $0.jurisdictionId == jurisdiction.id }
+        let isPresentToday = relevantRecords.contains {
+            calendar.isDate($0.date, inSameDayAs: today)
+        }
+        let naiveDays = max(0, daysRemaining(for: jurisdiction, records: records, asOf: today) + (isPresentToday ? 1 : 0))
+        let projectedDays = continuousStayDaysAvailable(for: jurisdiction, records: records, asOf: today)
+
+        return max(0, projectedDays - naiveDays)
+    }
+
+    /// If you leave today, when would this jurisdiction return to a full allowance?
+    func fullAllowanceResetDate(
+        for jurisdiction: Jurisdiction,
+        records: [StayRecord],
+        asOf date: Date = .now
+    ) -> Date? {
+        let today = calendar.startOfDay(for: date)
+        let relevantRecords = records.filter { $0.jurisdictionId == jurisdiction.id }
+
+        switch jurisdiction.ruleType {
+        case .rolling(_, let windowDays):
+            let inWindowDates = relevantRecords
+                .map { calendar.startOfDay(for: $0.date) }
+                .filter { recordedDay in
+                    guard let windowStart = calendar.date(byAdding: .day, value: -(windowDays - 1), to: today) else {
+                        return false
+                    }
+                    return recordedDay >= windowStart && recordedDay <= today
+                }
+
+            guard let latestRelevantDate = inWindowDates.max() else { return nil }
+            return calendar.date(byAdding: .day, value: windowDays, to: latestRelevantDate)
+
+        case .calendarYear:
+            guard daysInCalendarYear(records: relevantRecords, asOf: today) > 0 else { return nil }
+            return calendarYearReset(asOf: today)
+
+        case .perVisit:
+            return nil
+        }
     }
 
     /// For rolling windows: find the date when days start "falling off"
@@ -55,13 +141,13 @@ struct RulesEngine {
             .sorted { $0.date < $1.date }
 
         // Find the earliest record that's still within the window
-        guard let windowStart = calendar.date(byAdding: .day, value: -windowDays, to: today) else { return nil }
+        guard let windowStart = calendar.date(byAdding: .day, value: -(windowDays - 1), to: today) else { return nil }
         let inWindowRecords = relevantRecords.filter { $0.date >= windowStart && $0.date <= today }
 
         guard let earliestInWindow = inWindowRecords.first else { return nil }
 
         // The earliest day falls off when it's windowDays after its date
-        if let fallOffDate = calendar.date(byAdding: .day, value: windowDays + 1, to: earliestInWindow.date) {
+        if let fallOffDate = calendar.date(byAdding: .day, value: windowDays, to: earliestInWindow.date) {
             // Count how many days fall off on that same date
             let count = inWindowRecords.filter {
                 calendar.isDate($0.date, inSameDayAs: earliestInWindow.date)
@@ -84,13 +170,18 @@ struct RulesEngine {
         let remaining = daysRemaining(for: jurisdiction, records: records, asOf: date)
         let max = jurisdiction.ruleType.maxDays
         let used = daysUsed(for: jurisdiction, records: records, asOf: date)
+        let today = calendar.startOfDay(for: date)
+        let isPresentToday = records.contains {
+            $0.jurisdictionId == jurisdiction.id && calendar.isDate($0.date, inSameDayAs: today)
+        }
 
         // If they haven't used any days, it's safe
         if used == 0 { return .safe }
 
         let percentRemaining = Double(remaining) / Double(max)
 
-        if remaining == 0 { return .expired }
+        if used > max { return .expired }
+        if remaining == 0 { return isPresentToday ? .critical : .expired }
         if remaining <= 7 { return .critical }
         if percentRemaining < 0.15 { return .critical }
         if percentRemaining < 0.33 { return .warning }
@@ -142,6 +233,41 @@ struct RulesEngine {
             .map { calendar.startOfDay(for: $0.date) }
         )
         return uniqueDays.count
+    }
+
+    /// Simulate a continuous stay to find the last legal day in a rolling window.
+    private func projectedRollingStayDays(
+        records: [StayRecord],
+        maxDays: Int,
+        windowDays: Int,
+        asOf date: Date
+    ) -> Int {
+        let existingDays = Set(records.map { calendar.startOfDay(for: $0.date) })
+        var occupiedDays = existingDays
+        var projectedDate = date
+        var legalStayDays = 0
+
+        while legalStayDays < maxDays {
+            occupiedDays.insert(projectedDate)
+
+            guard let windowStart = calendar.date(byAdding: .day, value: -(windowDays - 1), to: projectedDate) else {
+                break
+            }
+
+            let usedDays = occupiedDays.filter { $0 >= windowStart && $0 <= projectedDate }.count
+            if usedDays > maxDays {
+                break
+            }
+
+            legalStayDays += 1
+
+            guard let nextDate = calendar.date(byAdding: .day, value: 1, to: projectedDate) else {
+                break
+            }
+            projectedDate = nextDate
+        }
+
+        return legalStayDays
     }
 }
 

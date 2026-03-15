@@ -66,6 +66,14 @@ final class DashboardViewModel {
         rulesEngine.mustLeaveBy(for: jurisdiction, records: records)
     }
 
+    func fullAllowanceResetDate(for jurisdiction: Jurisdiction) -> Date? {
+        rulesEngine.fullAllowanceResetDate(for: jurisdiction, records: records)
+    }
+
+    func projectedExtraDaysFromWindowExpiry(for jurisdiction: Jurisdiction) -> Int {
+        rulesEngine.projectedExtraDaysFromWindowExpiry(for: jurisdiction, records: records)
+    }
+
     func urgencyLevel(for jurisdiction: Jurisdiction) -> UrgencyLevel {
         rulesEngine.urgencyLevel(for: jurisdiction, records: records)
     }
@@ -103,6 +111,50 @@ final class DashboardViewModel {
         return Jurisdiction.all.filter { !activeIds.contains($0.id) }
     }
 
+    var currentDashboardJurisdiction: Jurisdiction? {
+        if let current = locationService.currentJurisdiction {
+            return current
+        }
+        return activeJurisdictions.first
+    }
+
+    var totalLoggedDays: Int {
+        records.count
+    }
+
+    var trackedJurisdictionCount: Int {
+        Set(records.map(\.jurisdictionId)).count
+    }
+
+    func recommendedDestinations(limit: Int = 3) -> [DestinationRecommendation] {
+        let currentId = locationService.currentJurisdiction?.id
+
+        return Jurisdiction.all
+            .filter { $0.id != currentId }
+            .compactMap { jurisdiction in
+                let remaining = daysRemaining(for: jurisdiction)
+                guard remaining > 0 else { return nil }
+
+                let used = daysUsed(for: jurisdiction)
+                let score = remaining + jurisdiction.ruleType.maxDays / 10 + (used == 0 ? 25 : 0)
+
+                return DestinationRecommendation(
+                    jurisdiction: jurisdiction,
+                    daysRemaining: remaining,
+                    reason: recommendationReason(for: jurisdiction, remaining: remaining),
+                    sortScore: score
+                )
+            }
+            .sorted { lhs, rhs in
+                if lhs.sortScore == rhs.sortScore {
+                    return lhs.jurisdiction.name < rhs.jurisdiction.name
+                }
+                return lhs.sortScore > rhs.sortScore
+            }
+            .prefix(limit)
+            .map { $0 }
+    }
+
     // MARK: - Location Updates
 
     private func handleLocationUpdate(_ notification: Notification) {
@@ -117,12 +169,12 @@ final class DashboardViewModel {
     func logDay(countryCode: String, jurisdictionId: String, source: RecordSource, date: Date = .now) {
         guard let modelContext = modelContext else { return }
 
-        let today = Calendar.current.startOfDay(for: date)
+        let normalizedDate = Calendar.current.startOfDay(for: date)
 
         // Check if today is already logged for this jurisdiction
         let existingDescriptor = FetchDescriptor<StayRecord>(
             predicate: #Predicate<StayRecord> { record in
-                record.jurisdictionId == jurisdictionId && record.date == today
+                record.jurisdictionId == jurisdictionId && record.date == normalizedDate
             }
         )
 
@@ -130,7 +182,7 @@ final class DashboardViewModel {
             let existing = try modelContext.fetch(existingDescriptor)
             if existing.isEmpty {
                 let record = StayRecord(
-                    date: today,
+                    date: normalizedDate,
                     countryCode: countryCode,
                     jurisdictionId: jurisdictionId,
                     source: source
@@ -140,8 +192,10 @@ final class DashboardViewModel {
                 loadRecords()
                 refreshTips()
 
-                // Fill in any gap days
-                fillGapDays(countryCode: countryCode, jurisdictionId: jurisdictionId)
+                // Only GPS updates for today should trigger backfill.
+                if source == .gps, Calendar.current.isDateInToday(normalizedDate) {
+                    fillGapDays(countryCode: countryCode, jurisdictionId: jurisdictionId)
+                }
             }
         } catch {
             print("Failed to log day: \(error)")
@@ -198,6 +252,7 @@ final class DashboardViewModel {
             do {
                 try modelContext.save()
                 loadRecords()
+                refreshTips()
             } catch {
                 print("Failed to save gap days: \(error)")
             }
@@ -208,14 +263,42 @@ final class DashboardViewModel {
 
     /// Add a date range for a jurisdiction manually
     func addManualDays(jurisdiction: Jurisdiction, from startDate: Date, to endDate: Date, countryCode: String? = nil) {
+        guard let modelContext = modelContext else { return }
+
         let calendar = Calendar.current
         let code = countryCode ?? jurisdiction.countryCodes.first ?? "XX"
         var date = calendar.startOfDay(for: startDate)
         let end = calendar.startOfDay(for: endDate)
+        var existingDates = Set(
+            records
+                .filter { $0.jurisdictionId == jurisdiction.id }
+                .map { calendar.startOfDay(for: $0.date) }
+        )
+        var inserted = false
 
         while date <= end {
-            logDay(countryCode: code, jurisdictionId: jurisdiction.id, source: .manual, date: date)
+            if !existingDates.contains(date) {
+                let record = StayRecord(
+                    date: date,
+                    countryCode: code,
+                    jurisdictionId: jurisdiction.id,
+                    source: .manual
+                )
+                modelContext.insert(record)
+                existingDates.insert(date)
+                inserted = true
+            }
             date = calendar.date(byAdding: .day, value: 1, to: date)!
+        }
+
+        guard inserted else { return }
+
+        do {
+            try modelContext.save()
+            loadRecords()
+            refreshTips()
+        } catch {
+            print("Failed to add manual days: \(error)")
         }
     }
 
@@ -277,4 +360,35 @@ final class DashboardViewModel {
         }
         return records.filter { $0.date >= monthStart && $0.date < monthEnd }
     }
+
+    private func recommendationReason(for jurisdiction: Jurisdiction, remaining: Int) -> String {
+        switch jurisdiction.id {
+        case "georgia":
+            return "365 days per entry and a top Schengen cooldown base"
+        case "uk":
+            return "180 days per visit if you need a long reset window"
+        case "albania", "montenegro", "serbia", "turkey":
+            return "\(remaining) days currently open outside the Schengen pool"
+        case "colombia":
+            return "Calendar-year counter with \(remaining) days left this year"
+        default:
+            switch jurisdiction.ruleType {
+            case .perVisit(let maxDays):
+                return "\(maxDays) fresh days on your next entry"
+            case .rolling(_, let windowDays):
+                return "\(remaining) days open in its \(windowDays)-day window"
+            case .calendarYear(let maxDays):
+                return "\(remaining) of \(maxDays) days left this calendar year"
+            }
+        }
+    }
+}
+
+struct DestinationRecommendation: Identifiable {
+    let jurisdiction: Jurisdiction
+    let daysRemaining: Int
+    let reason: String
+    let sortScore: Int
+
+    var id: String { jurisdiction.id }
 }

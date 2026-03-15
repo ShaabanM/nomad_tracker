@@ -39,6 +39,22 @@ struct TipsEngine {
         let remaining = rulesEngine.daysRemaining(for: jurisdiction, records: records, asOf: date)
         let used = rulesEngine.daysUsed(for: jurisdiction, records: records, asOf: date)
         let maxDays = jurisdiction.ruleType.maxDays
+        let projectedExtraDays = rulesEngine.projectedExtraDaysFromWindowExpiry(
+            for: jurisdiction,
+            records: records,
+            asOf: date
+        )
+        let fullResetDate = rulesEngine.fullAllowanceResetDate(
+            for: jurisdiction,
+            records: records,
+            asOf: date
+        )
+        let rollingProjectionNote: String
+        if projectedExtraDays > 0 {
+            rollingProjectionNote = " Older days should fall out of the rolling window while you stay, buying you about \(projectedExtraDays) extra day\(projectedExtraDays == 1 ? "" : "s")."
+        } else {
+            rollingProjectionNote = ""
+        }
 
         // Deadline warning
         if used > 0, let leaveBy = rulesEngine.mustLeaveBy(for: jurisdiction, records: records, asOf: date) {
@@ -49,7 +65,7 @@ struct TipsEngine {
                 tips.append(Tip(
                     icon: "exclamationmark.triangle.fill",
                     title: "Leave \(jurisdiction.name) by \(formatter.string(from: leaveBy))",
-                    message: "Only \(remaining) day\(remaining == 1 ? "" : "s") remaining! Book your departure now.",
+                    message: "Only \(remaining) day\(remaining == 1 ? "" : "s") remaining! Book your departure now.\(rollingProjectionNote)",
                     priority: .critical,
                     category: .deadline
                 ))
@@ -57,7 +73,7 @@ struct TipsEngine {
                 tips.append(Tip(
                     icon: "exclamationmark.triangle",
                     title: "\(remaining) days remaining in \(jurisdiction.name)",
-                    message: "Start planning your departure. You must leave by \(formatter.string(from: leaveBy)).",
+                    message: "Start planning your departure. You must leave by \(formatter.string(from: leaveBy)).\(rollingProjectionNote)",
                     priority: .high,
                     category: .deadline
                 ))
@@ -65,7 +81,7 @@ struct TipsEngine {
                 tips.append(Tip(
                     icon: "clock",
                     title: "\(remaining) days remaining in \(jurisdiction.name)",
-                    message: "You can stay until \(formatter.string(from: leaveBy)) if you remain continuously.",
+                    message: "You can stay until \(formatter.string(from: leaveBy)) if you remain continuously.\(rollingProjectionNote)",
                     priority: .medium,
                     category: .deadline
                 ))
@@ -73,7 +89,7 @@ struct TipsEngine {
                 tips.append(Tip(
                     icon: "checkmark.circle",
                     title: "Comfortable in \(jurisdiction.name)",
-                    message: "\(remaining) of \(maxDays) days remaining. Can stay until \(formatter.string(from: leaveBy)).",
+                    message: "\(remaining) of \(maxDays) days remaining. Can stay until \(formatter.string(from: leaveBy)).\(rollingProjectionNote)",
                     priority: .low,
                     category: .status
                 ))
@@ -89,6 +105,20 @@ struct TipsEngine {
                 title: "Days falling off the window",
                 message: "\(fallOff.count) day\(fallOff.count == 1 ? "" : "s") will fall off the \(jurisdiction.ruleType.ruleLabel.lowercased()) on \(formatter.string(from: fallOff.date)), giving you more allowance.",
                 priority: .low,
+                category: .info
+            ))
+        }
+
+        if case .rolling = jurisdiction.ruleType,
+           let fullResetDate,
+           used > 0 {
+            let formatter = DateFormatter()
+            formatter.dateStyle = .medium
+            tips.append(Tip(
+                icon: "sparkles",
+                title: "Full allowance restores on \(formatter.string(from: fullResetDate))",
+                message: "If you leave \(jurisdiction.name) now, that is the earliest date your rolling window would return to a clean slate.",
+                priority: remaining <= 14 ? .medium : .low,
                 category: .info
             ))
         }

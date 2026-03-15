@@ -5,7 +5,7 @@ struct OnboardingView: View {
     @Bindable var viewModel: DashboardViewModel
     @State private var currentPage = 0
     @State private var arrivalDate = Date.now
-    @State private var selectedJurisdiction: Jurisdiction? = .schengen
+    @State private var selectedJurisdiction: Jurisdiction?
 
     var body: some View {
         VStack {
@@ -126,7 +126,6 @@ struct OnboardingView: View {
                 .padding(.horizontal, 32)
 
             VStack(spacing: 16) {
-                // Jurisdiction picker
                 Picker("Jurisdiction", selection: $selectedJurisdiction) {
                     Text("None — starting fresh").tag(nil as Jurisdiction?)
                     ForEach(Jurisdiction.all) { jurisdiction in
@@ -135,6 +134,20 @@ struct OnboardingView: View {
                     }
                 }
                 .pickerStyle(.menu)
+
+                if let currentJurisdiction = viewModel.locationService.currentJurisdiction,
+                   selectedJurisdiction == nil {
+                    Button {
+                        selectedJurisdiction = currentJurisdiction
+                    } label: {
+                        Label(
+                            "Use detected location: \(currentJurisdiction.emoji) \(currentJurisdiction.name)",
+                            systemImage: "location.fill"
+                        )
+                        .font(.subheadline.weight(.medium))
+                    }
+                    .buttonStyle(.bordered)
+                }
 
                 if selectedJurisdiction != nil {
                     DatePicker("Arrived on", selection: $arrivalDate, in: ...Date.now, displayedComponents: .date)

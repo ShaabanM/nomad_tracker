@@ -129,6 +129,26 @@ struct JurisdictionDetailView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
+                if let leaveBy = viewModel.mustLeaveBy(for: jurisdiction),
+                   viewModel.daysUsed(for: jurisdiction) > 0 {
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "calendar.badge.clock")
+                                .foregroundStyle(.blue)
+                            Text("Projected continuous stay: \(leaveBy, format: .dateTime.month().day().year())")
+                                .font(.caption.weight(.medium))
+                        }
+
+                        let extraDays = viewModel.projectedExtraDaysFromWindowExpiry(for: jurisdiction)
+                        if extraDays > 0 {
+                            Text("\(extraDays) older day\(extraDays == 1 ? "" : "s") should fall out of the rolling window while you stay, extending your legal runway.")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.top, 4)
+                }
+
                 if let fallOff = viewModel.nextDayFallsOff(for: jurisdiction) {
                     HStack {
                         Image(systemName: "arrow.counterclockwise")

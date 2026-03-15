@@ -24,7 +24,8 @@ struct DashboardView: View {
                                         daysRemaining: viewModel.daysRemaining(for: jurisdiction),
                                         urgency: viewModel.urgencyLevel(for: jurisdiction),
                                         isActive: jurisdiction.id == viewModel.locationService.currentJurisdiction?.id,
-                                        mustLeaveBy: viewModel.mustLeaveBy(for: jurisdiction)
+                                        mustLeaveBy: viewModel.mustLeaveBy(for: jurisdiction),
+                                        projectedExtraDays: viewModel.projectedExtraDaysFromWindowExpiry(for: jurisdiction)
                                     )
                                 }
                                 .buttonStyle(.plain)

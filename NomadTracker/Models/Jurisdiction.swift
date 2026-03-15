@@ -3,7 +3,7 @@ import Foundation
 // MARK: - Rule Types
 
 /// How a jurisdiction counts your days
-enum RuleType: Codable, Equatable {
+enum RuleType: Codable, Equatable, Hashable {
     /// Rolling window: e.g., 90 days within any 180-day lookback (Schengen, Turkey, UAE)
     case rolling(maxDays: Int, windowDays: Int)
 
@@ -44,7 +44,7 @@ enum RuleType: Codable, Equatable {
 // MARK: - Jurisdiction
 
 /// A visa jurisdiction with its rules for Canadian citizens
-struct Jurisdiction: Identifiable, Equatable {
+struct Jurisdiction: Identifiable, Equatable, Hashable {
     let id: String
     let name: String
     let emoji: String
@@ -55,6 +55,10 @@ struct Jurisdiction: Identifiable, Equatable {
 
     static func == (lhs: Jurisdiction, rhs: Jurisdiction) -> Bool {
         lhs.id == rhs.id
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
     }
 }
 

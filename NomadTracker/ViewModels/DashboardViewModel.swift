@@ -66,6 +66,10 @@ final class DashboardViewModel {
         rulesEngine.mustLeaveBy(for: jurisdiction, records: records)
     }
 
+    func projectedExtraDaysFromWindowExpiry(for jurisdiction: Jurisdiction) -> Int {
+        rulesEngine.projectedExtraDaysFromWindowExpiry(for: jurisdiction, records: records)
+    }
+
     func urgencyLevel(for jurisdiction: Jurisdiction) -> UrgencyLevel {
         rulesEngine.urgencyLevel(for: jurisdiction, records: records)
     }

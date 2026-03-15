@@ -8,6 +8,7 @@ struct JurisdictionCard: View {
     let urgency: UrgencyLevel
     let isActive: Bool
     let mustLeaveBy: Date?
+    let projectedExtraDays: Int
 
     private var maxDays: Int { jurisdiction.ruleType.maxDays }
 
@@ -62,6 +63,13 @@ struct JurisdictionCard: View {
                     Text("Can stay until \(leaveBy, format: .dateTime.month().day().year())")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                }
+
+                if projectedExtraDays > 0 {
+                    Text("\(projectedExtraDays) older day\(projectedExtraDays == 1 ? "" : "s") should fall off while you stay")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
                 }
             }
 
@@ -135,7 +143,8 @@ struct JurisdictionCard: View {
                 daysRemaining: 85,
                 urgency: .safe,
                 isActive: true,
-                mustLeaveBy: Calendar.current.date(byAdding: .day, value: 85, to: .now)
+                mustLeaveBy: Calendar.current.date(byAdding: .day, value: 85, to: .now),
+                projectedExtraDays: 0
             )
 
             JurisdictionCard(
@@ -144,7 +153,8 @@ struct JurisdictionCard: View {
                 daysRemaining: 180,
                 urgency: .safe,
                 isActive: false,
-                mustLeaveBy: nil
+                mustLeaveBy: nil,
+                projectedExtraDays: 0
             )
 
             JurisdictionCard(
@@ -153,7 +163,8 @@ struct JurisdictionCard: View {
                 daysRemaining: 15,
                 urgency: .warning,
                 isActive: false,
-                mustLeaveBy: Calendar.current.date(byAdding: .day, value: 15, to: .now)
+                mustLeaveBy: Calendar.current.date(byAdding: .day, value: 15, to: .now),
+                projectedExtraDays: 3
             )
         }
         .padding()

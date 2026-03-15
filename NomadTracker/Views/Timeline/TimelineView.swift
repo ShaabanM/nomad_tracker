@@ -77,7 +77,7 @@ struct TimelineView: View {
         return VStack(spacing: 4) {
             // Day headers
             HStack(spacing: 4) {
-                ForEach(["S", "M", "T", "W", "T", "F", "S"], id: \.self) { day in
+                ForEach(Array(["S", "M", "T", "W", "T", "F", "S"].enumerated()), id: \.offset) { _, day in
                     Text(day)
                         .font(.caption2.weight(.medium))
                         .foregroundStyle(.secondary)

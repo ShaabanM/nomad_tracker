@@ -1,6 +1,7 @@
 // Main app controller — wires everything together
-import { hasCompletedOnboarding, getRecords, addRecord, makeRecord, fillGaps, todayStr } from './services/storage.js';
+import { hasCompletedOnboarding, getRecords, addRecord, makeRecord, fillGaps, todayStr, getCitizenship } from './services/storage.js';
 import { detectLocation, isLocationStale } from './services/location.js';
+import { findJurisdictionForCitizenship } from './data/citizenship-rules.js';
 import { renderDashboard } from './views/dashboard.js';
 import { renderTimeline } from './views/timeline.js';
 import { renderSettings } from './views/settings.js';
@@ -31,8 +32,11 @@ async function boot() {
     console.warn('Location detection failed:', e);
   }
 
-  // Log today if we have a location
-  if (currentLocation?.jurisdiction) {
+  // Re-resolve jurisdiction with citizenship-aware rules
+  resolveJurisdiction();
+
+  // Log today if we have a trackable location (not visa-required)
+  if (currentLocation?.jurisdiction && !currentLocation.jurisdiction.visaRequired && !currentLocation.jurisdiction.homeCountry) {
     const code = [...currentLocation.jurisdiction.countryCodes][0] || currentLocation.countryCode;
     const record = makeRecord(new Date(), code, currentLocation.jurisdiction.id, 'gps');
     addRecord(record);
@@ -49,6 +53,16 @@ async function boot() {
   // Show stale location banner if needed
   if (isLocationStale(24) && currentLocation?.cached) {
     showStaleBanner();
+  }
+}
+
+function resolveJurisdiction() {
+  if (currentLocation?.jurisdiction) {
+    // Re-resolve with citizenship-specific rules
+    const citizenJ = findJurisdictionForCitizenship(currentLocation.jurisdiction.id, getCitizenship());
+    if (citizenJ) {
+      currentLocation.jurisdiction = citizenJ;
+    }
   }
 }
 
@@ -93,8 +107,9 @@ function wireEvents() {
 
     try {
       currentLocation = await detectLocation();
+      resolveJurisdiction();
 
-      if (currentLocation?.jurisdiction) {
+      if (currentLocation?.jurisdiction && !currentLocation.jurisdiction.visaRequired && !currentLocation.jurisdiction.homeCountry) {
         const code = [...currentLocation.jurisdiction.countryCodes][0] || currentLocation.countryCode;
         const record = makeRecord(new Date(), code, currentLocation.jurisdiction.id, 'gps');
         addRecord(record);
@@ -109,6 +124,12 @@ function wireEvents() {
 
   // Data changed (from settings, detail, etc.)
   document.addEventListener('data-changed', () => {
+    renderActiveTab();
+  });
+
+  // Citizenship changed — re-resolve jurisdiction and re-render
+  document.addEventListener('citizenship-changed', () => {
+    resolveJurisdiction();
     renderActiveTab();
   });
 }

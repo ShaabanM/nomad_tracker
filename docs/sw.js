@@ -1,11 +1,12 @@
 // Service Worker for offline caching
-const CACHE_NAME = 'nomad-tracker-v2';
+const CACHE_NAME = 'nomad-tracker-v3';
 const ASSETS = [
   './',
   './index.html',
   './css/style.css',
   './js/app.js',
   './js/data/jurisdictions.js',
+  './js/data/citizenship-rules.js',
   './js/services/storage.js',
   './js/services/rules-engine.js',
   './js/services/tips-engine.js',

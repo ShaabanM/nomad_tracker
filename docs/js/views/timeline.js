@@ -1,6 +1,7 @@
 // Timeline tab rendering
-import { ALL_JURISDICTIONS, countryFlag } from '../data/jurisdictions.js';
-import { getRecords, toDateStr, parseDate, todayStr } from '../services/storage.js';
+import { countryFlag } from '../data/jurisdictions.js';
+import { getJurisdictionsForCitizenship } from '../data/citizenship-rules.js';
+import { getRecords, toDateStr, parseDate, todayStr, getCitizenship } from '../services/storage.js';
 
 let currentMonth = new Date();
 
@@ -8,6 +9,7 @@ export function renderTimeline() {
   const records = getRecords();
   const today = todayStr();
   const container = document.getElementById('tab-timeline');
+  const jurisdictions = getJurisdictionsForCitizenship(getCitizenship());
 
   const year = currentMonth.getFullYear();
   const month = currentMonth.getMonth();
@@ -51,7 +53,7 @@ export function renderTimeline() {
     const isToday = d === todayDay;
     const hasRecord = dayRecords.length > 0;
     const jurisdiction = hasRecord
-      ? ALL_JURISDICTIONS.find(j => j.id === dayRecords[0].jurisdictionId)
+      ? jurisdictions.find(j => j.id === dayRecords[0].jurisdictionId)
       : null;
 
     const classes = ['cal-day'];
@@ -81,7 +83,7 @@ export function renderTimeline() {
     summaryHtml = '<div style="font-size:13px;color:var(--text-secondary);padding:8px 0">No travel recorded this month.</div>';
   } else {
     for (const entry of summaryEntries) {
-      const j = ALL_JURISDICTIONS.find(j => j.id === entry.id);
+      const j = jurisdictions.find(j => j.id === entry.id);
       if (!j) continue;
       summaryHtml += `
         <div class="summary-row">

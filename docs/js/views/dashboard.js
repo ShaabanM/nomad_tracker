@@ -1,7 +1,8 @@
 // Dashboard tab rendering
-import { ALL_JURISDICTIONS, countryFlag, ruleLabel, ruleDescription } from '../data/jurisdictions.js';
+import { countryFlag, ruleLabel, ruleDescription } from '../data/jurisdictions.js';
+import { getJurisdictionsForCitizenship, findJurisdictionForCitizenship } from '../data/citizenship-rules.js';
 import * as rules from '../services/rules-engine.js';
-import { getRecords, todayStr } from '../services/storage.js';
+import { getRecords, todayStr, getCitizenship } from '../services/storage.js';
 
 export function renderDashboard(location, onCardClick) {
   const records = getRecords();
@@ -100,8 +101,9 @@ function renderLocationHeader(location) {
 }
 
 function getActiveJurisdictions(location, records, today) {
+  const jurisdictions = getJurisdictionsForCitizenship(getCitizenship());
   const activeIds = new Set(records.map(r => r.jurisdictionId));
-  const active = ALL_JURISDICTIONS.filter(j => activeIds.has(j.id));
+  const active = jurisdictions.filter(j => activeIds.has(j.id));
 
   if (location?.jurisdiction && !active.find(j => j.id === location.jurisdiction.id)) {
     active.unshift(location.jurisdiction);
@@ -111,6 +113,10 @@ function getActiveJurisdictions(location, records, today) {
   active.sort((a, b) => {
     if (a.id === location?.jurisdiction?.id) return -1;
     if (b.id === location?.jurisdiction?.id) return 1;
+    // Visa-required and special jurisdictions sort to the end
+    if (a.visaRequired !== b.visaRequired) return a.visaRequired ? 1 : -1;
+    if (a.homeCountry !== b.homeCountry) return a.homeCountry ? 1 : -1;
+    if (a.unrestricted !== b.unrestricted) return a.unrestricted ? 1 : -1;
     return rules.daysUsed(b, records, today) - rules.daysUsed(a, records, today);
   });
 
@@ -118,6 +124,48 @@ function getActiveJurisdictions(location, records, today) {
 }
 
 function renderJurisdictionCard(jurisdiction, records, today, isActive) {
+  // Visa-required card
+  if (jurisdiction.visaRequired) {
+    return `<div class="card card-visa-required" data-jurisdiction="${jurisdiction.id}">
+      <div class="j-card-compact">
+        <span class="j-card-emoji">${jurisdiction.emoji}</span>
+        <div class="j-card-compact-info">
+          <div class="j-card-compact-name">${jurisdiction.name}</div>
+          <div class="j-card-compact-sub" style="color:var(--orange)">Visa required</div>
+        </div>
+        <span class="visa-badge">VISA</span>
+      </div>
+    </div>`;
+  }
+
+  // Home country card
+  if (jurisdiction.homeCountry) {
+    return `<div class="card" data-jurisdiction="${jurisdiction.id}">
+      <div class="j-card-compact">
+        <span class="j-card-emoji">${jurisdiction.emoji}</span>
+        <div class="j-card-compact-info">
+          <div class="j-card-compact-name">${jurisdiction.name}</div>
+          <div class="j-card-compact-sub" style="color:var(--green)">Home country</div>
+        </div>
+        <span class="home-badge">HOME</span>
+      </div>
+    </div>`;
+  }
+
+  // Unrestricted card
+  if (jurisdiction.unrestricted) {
+    return `<div class="card" data-jurisdiction="${jurisdiction.id}">
+      <div class="j-card-compact">
+        <span class="j-card-emoji">${jurisdiction.emoji}</span>
+        <div class="j-card-compact-info">
+          <div class="j-card-compact-name">${jurisdiction.name}</div>
+          <div class="j-card-compact-sub" style="color:var(--green)">Unrestricted access</div>
+        </div>
+        <span class="home-badge">FREE</span>
+      </div>
+    </div>`;
+  }
+
   const used = rules.daysUsed(jurisdiction, records, today);
   const remaining = rules.daysRemaining(jurisdiction, records, today);
   const urgency = rules.urgencyLevel(jurisdiction, records, today);
@@ -219,7 +267,8 @@ function generateTipsInline(currentJurisdiction, records, today) {
   // Import tips engine dynamically isn't needed since we can inline
   const tips = [];
 
-  if (currentJurisdiction) {
+  // Only generate deadline tips for trackable jurisdictions (not visa-required, home, or unrestricted)
+  if (currentJurisdiction && !currentJurisdiction.visaRequired && !currentJurisdiction.homeCountry && !currentJurisdiction.unrestricted) {
     const remaining = rules.daysRemaining(currentJurisdiction, records, today);
     const used = rules.daysUsed(currentJurisdiction, records, today);
     const max = currentJurisdiction.maxDays;
@@ -250,21 +299,39 @@ function generateTipsInline(currentJurisdiction, records, today) {
     }
   }
 
-  // Schengen exit suggestions
-  if (currentJurisdiction?.id === 'schengen') {
-    const schengen = ALL_JURISDICTIONS.find(j => j.id === 'schengen');
-    const remaining = rules.daysRemaining(schengen, records, today);
+  // Schengen exit suggestions (only if Schengen is visa-free for this citizenship)
+  const citizenCode = getCitizenship();
+  const schengenJ = findJurisdictionForCitizenship('schengen', citizenCode);
+  if (currentJurisdiction?.id === 'schengen' && schengenJ && !schengenJ.visaRequired) {
+    const remaining = rules.daysRemaining(schengenJ, records, today);
     if (remaining <= 30) {
-      tips.push({ icon: 'airplane', title: 'Plan your Schengen exit', message: 'Consider: Georgia (365 days!), Albania (90), Montenegro (90), Turkey (90), or UK (180).', priority: 'high', category: 'suggestion' });
+      // Build suggestion from visa-free destinations only
+      const exitOptions = [];
+      const candidates = [
+        { id: 'georgia', label: 'Georgia' },
+        { id: 'albania', label: 'Albania' },
+        { id: 'montenegro', label: 'Montenegro' },
+        { id: 'turkey', label: 'Turkey' },
+        { id: 'uk', label: 'UK' },
+      ];
+      for (const c of candidates) {
+        const j = findJurisdictionForCitizenship(c.id, citizenCode);
+        if (j && !j.visaRequired) {
+          exitOptions.push(`${c.label} (${j.maxDays}${j.unrestricted ? '+' : ''} days)`);
+        }
+      }
+      if (exitOptions.length > 0) {
+        tips.push({ icon: 'airplane', title: 'Plan your Schengen exit', message: `Consider: ${exitOptions.join(', ')}.`, priority: 'high', category: 'suggestion' });
+      }
     }
     tips.push({ icon: 'info-circle', title: 'Schengen rolling window', message: "90/180 rule uses a rolling window. A 1-day trip outside doesn't meaningfully help.", priority: 'low', category: 'info' });
   }
 
-  // Georgia promotion
-  if (currentJurisdiction?.id !== 'georgia') {
-    const georgia = ALL_JURISDICTIONS.find(j => j.id === 'georgia');
-    if (rules.daysUsed(georgia, records, today) === 0) {
-      tips.push({ icon: 'star', title: 'Georgia: 365 days visa-free', message: 'Perfect for a Schengen cooldown. Vibrant nomad community in Tbilisi.', priority: 'low', category: 'suggestion' });
+  // Georgia promotion (only if visa-free for this citizenship)
+  const georgiaJ = findJurisdictionForCitizenship('georgia', citizenCode);
+  if (currentJurisdiction?.id !== 'georgia' && georgiaJ && !georgiaJ.visaRequired) {
+    if (rules.daysUsed(georgiaJ, records, today) === 0) {
+      tips.push({ icon: 'star', title: `Georgia: ${georgiaJ.maxDays} days visa-free`, message: 'Perfect for a Schengen cooldown. Vibrant nomad community in Tbilisi.', priority: 'low', category: 'suggestion' });
     }
   }
 

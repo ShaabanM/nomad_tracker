@@ -1,25 +1,102 @@
 // Jurisdiction detail modal
-import { ALL_JURISDICTIONS, countryFlag, ruleLabel, ruleDescription } from '../data/jurisdictions.js';
+import { countryFlag, ruleLabel, ruleDescription } from '../data/jurisdictions.js';
+import { findJurisdictionForCitizenship } from '../data/citizenship-rules.js';
 import * as rules from '../services/rules-engine.js';
-import { getRecords, addDateRange, clearJurisdiction, deleteRecord, todayStr, toDateStr, parseDate } from '../services/storage.js';
+import { getRecords, addDateRange, clearJurisdiction, deleteRecord, todayStr, toDateStr, parseDate, getCitizenship } from '../services/storage.js';
 import { renderProgressRing } from './dashboard.js';
 
 export function showDetail(jurisdictionId, location) {
-  const jurisdiction = ALL_JURISDICTIONS.find(j => j.id === jurisdictionId);
+  const jurisdiction = findJurisdictionForCitizenship(jurisdictionId, getCitizenship());
   if (!jurisdiction) return;
 
   const records = getRecords();
   const today = todayStr();
+  const modal = document.getElementById('modal');
+  const isHere = location?.jurisdiction?.id === jurisdiction.id;
+  const jRecords = records.filter(r => r.jurisdictionId === jurisdiction.id).sort((a, b) => b.date.localeCompare(a.date));
+
+  // Visa-required detail view
+  if (jurisdiction.visaRequired) {
+    modal.querySelector('.modal-sheet').innerHTML = `
+      <div class="modal-handle"></div>
+      <div class="card" style="text-align:center">
+        <div style="font-size:48px;margin-bottom:12px">${jurisdiction.emoji}</div>
+        <div style="font-size:22px;font-weight:700">${jurisdiction.name}</div>
+        <div style="margin-top:16px">
+          <span class="visa-badge" style="font-size:16px;padding:6px 16px">VISA REQUIRED</span>
+        </div>
+        <div style="font-size:14px;color:var(--text-secondary);margin-top:16px;line-height:1.5">
+          ${jurisdiction.visaInfo || 'A visa is required for this destination.'}
+        </div>
+      </div>
+      ${jRecords.length > 0 ? renderDayLog(jRecords, jurisdiction) : ''}
+      <button class="btn btn-text" id="detail-close" style="margin-top:8px">Close</button>`;
+    modal.classList.add('open');
+    wireCloseAndDelete(modal, jurisdictionId, jurisdiction, location, jRecords);
+    return;
+  }
+
+  // Home country detail view
+  if (jurisdiction.homeCountry) {
+    modal.querySelector('.modal-sheet').innerHTML = `
+      <div class="modal-handle"></div>
+      <div class="card" style="text-align:center">
+        <div style="font-size:48px;margin-bottom:12px">${jurisdiction.emoji}</div>
+        <div style="font-size:22px;font-weight:700">${jurisdiction.name}</div>
+        <div style="margin-top:16px">
+          <span class="home-badge" style="font-size:16px;padding:6px 16px">HOME COUNTRY</span>
+        </div>
+        <div style="font-size:14px;color:var(--text-secondary);margin-top:16px;line-height:1.5">
+          This is your home country. No visa or stay limits apply.
+        </div>
+      </div>
+      <button class="btn btn-text" id="detail-close" style="margin-top:8px">Close</button>`;
+    modal.classList.add('open');
+    wireCloseAndDelete(modal, jurisdictionId, jurisdiction, location, []);
+    return;
+  }
+
+  // Unrestricted access detail view
+  if (jurisdiction.unrestricted) {
+    const notesHtml = (jurisdiction.notes?.length > 0)
+      ? `<div class="card">
+          <div class="rule-card-label">⚠️ Notes</div>
+          ${jurisdiction.notes.map(n => `<div class="note-item"><span class="note-bullet">•</span><span>${n}</span></div>`).join('')}
+        </div>`
+      : '';
+    const tipsHtml = (jurisdiction.tips?.length > 0)
+      ? `<div class="card">
+          <div class="rule-card-label">💡 Tips</div>
+          ${jurisdiction.tips.map(t => `<div class="tip-item"><span class="tip-bullet">→</span><span>${t}</span></div>`).join('')}
+        </div>`
+      : '';
+
+    modal.querySelector('.modal-sheet').innerHTML = `
+      <div class="modal-handle"></div>
+      <div class="card" style="text-align:center">
+        <div style="font-size:48px;margin-bottom:12px">${jurisdiction.emoji}</div>
+        <div style="font-size:22px;font-weight:700">${jurisdiction.name}</div>
+        <div style="margin-top:16px">
+          <span class="home-badge" style="font-size:16px;padding:6px 16px">UNRESTRICTED</span>
+        </div>
+        <div style="font-size:14px;color:var(--text-secondary);margin-top:16px;line-height:1.5">
+          You have unrestricted access. No time limits on stays.
+        </div>
+      </div>
+      ${notesHtml}
+      ${tipsHtml}
+      <button class="btn btn-text" id="detail-close" style="margin-top:8px">Close</button>`;
+    modal.classList.add('open');
+    wireCloseAndDelete(modal, jurisdictionId, jurisdiction, location, []);
+    return;
+  }
+
   const used = rules.daysUsed(jurisdiction, records, today);
   const remaining = rules.daysRemaining(jurisdiction, records, today);
   const urgency = rules.urgencyLevel(jurisdiction, records, today);
   const max = jurisdiction.maxDays;
-  const isHere = location?.jurisdiction?.id === jurisdiction.id;
   const leaveBy = used > 0 ? rules.mustLeaveBy(jurisdiction, records, today) : null;
   const pct = Math.min(100, (used / max) * 100);
-  const jRecords = records.filter(r => r.jurisdictionId === jurisdiction.id).sort((a, b) => b.date.localeCompare(a.date));
-
-  const modal = document.getElementById('modal');
 
   // Rule explanation
   let ruleExplanation = '';
@@ -225,4 +302,64 @@ function formatDate(dateStr) {
 function formatDateLong(dateStr) {
   const [y, m, d] = dateStr.split('-').map(Number);
   return new Date(y, m - 1, d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+}
+
+function renderDayLog(jRecords, jurisdiction) {
+  const logRows = jRecords.slice(0, 30).map(r => `
+    <div class="day-log-row" data-record-id="${r.id}">
+      <span class="day-log-flag">${countryFlag(r.countryCode)}</span>
+      <span class="day-log-date">${formatDateLong(r.date)}</span>
+      <span class="day-log-source">${r.source === 'gps' ? '📍' : '✋'}</span>
+      <button class="day-log-delete" title="Delete">✕</button>
+    </div>
+  `).join('');
+  const moreText = jRecords.length > 30 ? `<div style="font-size:12px;color:var(--text-secondary)">+ ${jRecords.length - 30} more days</div>` : '';
+  return `<div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <div class="rule-card-label">📅 Day Log</div>
+      <span style="font-size:12px;color:var(--text-secondary)">${jRecords.length} days</span>
+    </div>
+    ${logRows}
+    ${moreText}
+  </div>
+  <button class="btn btn-destructive" id="detail-clear">🗑 Clear All Days for ${jurisdiction.name}</button>`;
+}
+
+function wireCloseAndDelete(modal, jurisdictionId, jurisdiction, location, jRecords) {
+  // Delete buttons
+  modal.querySelectorAll('.day-log-delete').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const row = btn.closest('.day-log-row');
+      deleteRecord(row.dataset.recordId);
+      document.dispatchEvent(new CustomEvent('data-changed'));
+      showDetail(jurisdictionId, location);
+    });
+  });
+
+  // Clear button
+  const clearBtn = modal.querySelector('#detail-clear');
+  if (clearBtn) {
+    clearBtn.addEventListener('click', () => {
+      if (confirm(`Delete all recorded days for ${jurisdiction.name}? This cannot be undone.`)) {
+        clearJurisdiction(jurisdiction.id);
+        document.dispatchEvent(new CustomEvent('data-changed'));
+        modal.classList.remove('open');
+      }
+    });
+  }
+
+  // Close
+  const closeBtn = modal.querySelector('#detail-close');
+  if (closeBtn) {
+    closeBtn.addEventListener('click', () => modal.classList.remove('open'));
+  }
+
+  const closeHandler = (e) => {
+    if (e.target === modal) {
+      modal.classList.remove('open');
+      modal.removeEventListener('click', closeHandler);
+    }
+  };
+  modal.addEventListener('click', closeHandler);
 }

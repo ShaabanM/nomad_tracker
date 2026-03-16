@@ -3,6 +3,7 @@
 const RECORDS_KEY = 'nomad_records';
 const ONBOARDING_KEY = 'nomad_onboarding';
 const LOCATION_KEY = 'nomad_last_location';
+const CITIZENSHIP_KEY = 'nomad_citizenship';
 
 // Date helpers — all dates stored as YYYY-MM-DD strings
 export function toDateStr(date) {
@@ -144,4 +145,13 @@ export function saveLastLocation(location) {
     ...location,
     timestamp: Date.now(),
   }));
+}
+
+// Citizenship setting (defaults to 'CA' for backward compat)
+export function getCitizenship() {
+  return localStorage.getItem(CITIZENSHIP_KEY) || 'CA';
+}
+
+export function setCitizenship(code) {
+  localStorage.setItem(CITIZENSHIP_KEY, code);
 }

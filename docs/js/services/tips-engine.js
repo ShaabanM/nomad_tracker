@@ -1,7 +1,7 @@
 // Contextual tip generation — ported from TipsEngine.swift
-import { findJurisdiction, ALL_JURISDICTIONS } from '../data/jurisdictions.js';
+import { findJurisdictionForCitizenship } from '../data/citizenship-rules.js';
 import * as rules from './rules-engine.js';
-import { todayStr, parseDate } from './storage.js';
+import { todayStr, parseDate, getCitizenship } from './storage.js';
 
 export function generateTips(currentJurisdiction, records, asOf = todayStr()) {
   const tips = [];
@@ -96,20 +96,38 @@ function currentJurisdictionTips(jurisdiction, records, asOf) {
 
 function generalTips(currentJurisdiction, records, asOf) {
   const tips = [];
-  const schengen = findJurisdiction('schengen');
+  const citizenCode = getCitizenship();
+  const schengen = findJurisdictionForCitizenship('schengen', citizenCode);
 
-  // Schengen exit suggestions
-  if (currentJurisdiction?.id === 'schengen') {
+  // Schengen exit suggestions (only if Schengen is visa-free)
+  if (currentJurisdiction?.id === 'schengen' && schengen && !schengen.visaRequired) {
     const remaining = rules.daysRemaining(schengen, records, asOf);
 
     if (remaining <= 30) {
-      tips.push({
-        icon: 'airplane',
-        title: 'Plan your Schengen exit',
-        message: 'Consider these non-Schengen destinations: Georgia (365 days!), Albania (90 days), Montenegro (90 days), Turkey (90 days), or the UK (180 days).',
-        priority: 'high',
-        category: 'suggestion',
-      });
+      // Build suggestion from visa-free destinations only
+      const exitOptions = [];
+      const candidates = [
+        { id: 'georgia', label: 'Georgia' },
+        { id: 'albania', label: 'Albania' },
+        { id: 'montenegro', label: 'Montenegro' },
+        { id: 'turkey', label: 'Turkey' },
+        { id: 'uk', label: 'UK' },
+      ];
+      for (const c of candidates) {
+        const j = findJurisdictionForCitizenship(c.id, citizenCode);
+        if (j && !j.visaRequired) {
+          exitOptions.push(`${c.label} (${j.maxDays}${j.unrestricted ? '+' : ''} days)`);
+        }
+      }
+      if (exitOptions.length > 0) {
+        tips.push({
+          icon: 'airplane',
+          title: 'Plan your Schengen exit',
+          message: `Consider these destinations: ${exitOptions.join(', ')}.`,
+          priority: 'high',
+          category: 'suggestion',
+        });
+      }
     }
 
     tips.push({
@@ -121,14 +139,14 @@ function generalTips(currentJurisdiction, records, asOf) {
     });
   }
 
-  // Georgia promotion
-  if (currentJurisdiction?.id !== 'georgia') {
-    const georgia = findJurisdiction('georgia');
+  // Georgia promotion (only if visa-free)
+  const georgia = findJurisdictionForCitizenship('georgia', citizenCode);
+  if (currentJurisdiction?.id !== 'georgia' && georgia && !georgia.visaRequired) {
     const georgiaUsed = rules.daysUsed(georgia, records, asOf);
     if (georgiaUsed === 0) {
       tips.push({
         icon: 'star',
-        title: 'Georgia: 365 days visa-free',
+        title: `Georgia: ${georgia.maxDays} days visa-free`,
         message: "One of the most generous visa policies in the world. Perfect for a Schengen cooldown with vibrant nomad community in Tbilisi.",
         priority: 'low',
         category: 'suggestion',
@@ -136,17 +154,19 @@ function generalTips(currentJurisdiction, records, asOf) {
     }
   }
 
-  // Colombia calendar year warning
-  const colombia = findJurisdiction('colombia');
-  const colombiaUsed = rules.daysUsed(colombia, records, asOf);
-  if (colombiaUsed > 0) {
-    tips.push({
-      icon: 'exclamation-circle',
-      title: "Colombia: Border runs don't help",
-      message: `Colombia counts ALL days in a calendar year. Leaving and re-entering does NOT reset your counter. ${colombiaUsed}/180 days used this year.`,
-      priority: 'medium',
-      category: 'info',
-    });
+  // Colombia calendar year warning (only if visa-free)
+  const colombia = findJurisdictionForCitizenship('colombia', citizenCode);
+  if (colombia && !colombia.visaRequired) {
+    const colombiaUsed = rules.daysUsed(colombia, records, asOf);
+    if (colombiaUsed > 0) {
+      tips.push({
+        icon: 'exclamation-circle',
+        title: "Colombia: Border runs don't help",
+        message: `Colombia counts ALL days in a calendar year. Leaving and re-entering does NOT reset your counter. ${colombiaUsed}/${colombia.maxDays} days used this year.`,
+        priority: 'medium',
+        category: 'info',
+      });
+    }
   }
 
   // Montenegro registration

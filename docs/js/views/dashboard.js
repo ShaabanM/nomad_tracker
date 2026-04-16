@@ -2,13 +2,27 @@
 import { countryFlag, ruleLabel, ruleDescription } from '../data/jurisdictions.js';
 import { getJurisdictionsForCitizenship, findJurisdictionForCitizenship } from '../data/citizenship-rules.js';
 import * as rules from '../services/rules-engine.js';
-import { getRecords, todayStr, getCitizenship } from '../services/storage.js';
+import { getRecords, todayStr, getCitizenship, getLocationOverride } from '../services/storage.js';
+import { showLocationOverride } from './location-override.js';
 
-export function renderDashboard(location, onCardClick) {
+export function renderDashboard(location, onCardClick, extras = {}) {
   const records = getRecords();
   const today = todayStr();
+  const { pendingGap, lastBackfillResult } = extras;
 
   let html = '';
+
+  // Update available notification handled in app.js
+
+  // Gap review banner (if unresolved ambiguous gap)
+  if (pendingGap) {
+    html += renderGapBanner(pendingGap, location);
+  }
+
+  // Inline "filled N days automatically" toast if we just did a silent backfill
+  if (lastBackfillResult && lastBackfillResult.filled > 0) {
+    html += renderBackfillToast(lastBackfillResult);
+  }
 
   // Location header
   html += renderLocationHeader(location);
@@ -50,6 +64,23 @@ export function renderDashboard(location, onCardClick) {
     });
   }
 
+  // Wire up override (set location manually)
+  const overrideBtn = container.querySelector('.override-btn');
+  if (overrideBtn) {
+    overrideBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      showLocationOverride();
+    });
+  }
+
+  // Wire up gap review button
+  const gapBtn = container.querySelector('#gap-review-btn');
+  if (gapBtn) {
+    gapBtn.addEventListener('click', () => {
+      document.dispatchEvent(new CustomEvent('open-gap-review'));
+    });
+  }
+
   // Wire up tips toggle
   const tipsBtn = container.querySelector('.tips-header');
   if (tipsBtn) {
@@ -64,7 +95,30 @@ export function renderDashboard(location, onCardClick) {
   }
 }
 
+function renderGapBanner(gap, location) {
+  const gapStart = gap.gapStart;
+  const lastDate = gap.lastRecord?.date || '?';
+  return `<div class="card" id="gap-review-btn" style="background:var(--yellow);color:#1c1c1e;cursor:pointer;display:flex;align-items:center;gap:12px;padding:14px 16px">
+    <div style="font-size:24px">\u{1F5D3}\uFE0F</div>
+    <div style="flex:1">
+      <div style="font-size:14px;font-weight:600">${gap.gapDays} unlogged day${gap.gapDays === 1 ? '' : 's'}</div>
+      <div style="font-size:12px;opacity:0.75">Since ${formatDate(lastDate)}. Tap to review where you were.</div>
+    </div>
+    <div style="font-size:18px;font-weight:300">\u203A</div>
+  </div>`;
+}
+
+function renderBackfillToast(result) {
+  const d = result.filled;
+  return `<div class="card" style="background:rgba(52,199,89,0.12);border-color:rgba(52,199,89,0.3);padding:10px 14px;display:flex;align-items:center;gap:10px">
+    <div style="font-size:16px">\u2728</div>
+    <div style="flex:1;font-size:13px;color:var(--text-secondary)">Auto-logged <strong style="color:var(--text)">${d}</strong> missed day${d === 1 ? '' : 's'} based on your location.</div>
+  </div>`;
+}
+
 function renderLocationHeader(location) {
+  const override = getLocationOverride();
+
   if (!location) {
     return `<div class="card">
       <div class="location-header">
@@ -74,28 +128,33 @@ function renderLocationHeader(location) {
           <div class="location-jurisdiction">Tap refresh to try again</div>
         </div>
         <button class="refresh-btn" title="Refresh location">\u{21BB}</button>
+        <button class="override-btn" title="Set location manually" style="background:none;border:none;color:var(--accent);font-size:13px;padding:8px;cursor:pointer">Set</button>
       </div>
     </div>`;
   }
 
   const flag = countryFlag(location.countryCode);
   const cityCountry = location.city
-    ? `${location.city}, ${location.country}`
-    : location.country;
+    ? `${escapeHtml(location.city)}, ${escapeHtml(location.country)}`
+    : escapeHtml(location.country);
   const jurisdictionName = location.jurisdiction?.name || 'Not a tracked jurisdiction';
+
+  const sourceLabel = override ? 'manual' : (location.cached ? 'cached' : 'live');
+  const dotClass = override ? '' : (location.cached ? 'stale' : '');
 
   return `<div class="card">
     <div class="location-header">
       <div class="location-flag">${flag}</div>
       <div class="location-info">
         <div class="location-city">${cityCountry}</div>
-        <div class="location-jurisdiction">${jurisdictionName}</div>
+        <div class="location-jurisdiction">${escapeHtml(jurisdictionName)}</div>
       </div>
       <div class="location-status">
-        <div class="location-dot ${location.cached ? 'stale' : ''}"></div>
-        <div class="location-time">${location.cached ? 'cached' : 'live'}</div>
+        <div class="location-dot ${dotClass}"></div>
+        <div class="location-time">${sourceLabel}</div>
       </div>
       <button class="refresh-btn" title="Refresh location">\u{21BB}</button>
+      <button class="override-btn" title="Set location manually" style="background:none;border:none;color:var(--accent);font-size:13px;padding:6px 4px;cursor:pointer;margin-left:4px">\u270F\uFE0F</button>
     </div>
   </div>`;
 }
@@ -130,7 +189,7 @@ function renderJurisdictionCard(jurisdiction, records, today, isActive) {
       <div class="j-card-compact">
         <span class="j-card-emoji">${jurisdiction.emoji}</span>
         <div class="j-card-compact-info">
-          <div class="j-card-compact-name">${jurisdiction.name}</div>
+          <div class="j-card-compact-name">${escapeHtml(jurisdiction.name)}</div>
           <div class="j-card-compact-sub" style="color:var(--orange)">Visa required</div>
         </div>
         <span class="visa-badge">VISA</span>
@@ -144,7 +203,7 @@ function renderJurisdictionCard(jurisdiction, records, today, isActive) {
       <div class="j-card-compact">
         <span class="j-card-emoji">${jurisdiction.emoji}</span>
         <div class="j-card-compact-info">
-          <div class="j-card-compact-name">${jurisdiction.name}</div>
+          <div class="j-card-compact-name">${escapeHtml(jurisdiction.name)}</div>
           <div class="j-card-compact-sub" style="color:var(--green)">Home country</div>
         </div>
         <span class="home-badge">HOME</span>
@@ -158,7 +217,7 @@ function renderJurisdictionCard(jurisdiction, records, today, isActive) {
       <div class="j-card-compact">
         <span class="j-card-emoji">${jurisdiction.emoji}</span>
         <div class="j-card-compact-info">
-          <div class="j-card-compact-name">${jurisdiction.name}</div>
+          <div class="j-card-compact-name">${escapeHtml(jurisdiction.name)}</div>
           <div class="j-card-compact-sub" style="color:var(--green)">Unrestricted access</div>
         </div>
         <span class="home-badge">FREE</span>
@@ -180,7 +239,7 @@ function renderJurisdictionCard(jurisdiction, records, today, isActive) {
       <div class="j-card-expanded">
         <div class="j-card-header">
           <span class="j-card-emoji">${jurisdiction.emoji}</span>
-          <span class="j-card-name">${jurisdiction.name}</span>
+          <span class="j-card-name">${escapeHtml(jurisdiction.name)}</span>
           <span class="active-badge bg-${urgency}">ACTIVE</span>
         </div>
         ${renderProgressRing(used, max, urgency, 110)}
@@ -202,7 +261,7 @@ function renderJurisdictionCard(jurisdiction, records, today, isActive) {
     <div class="j-card-compact">
       <span class="j-card-emoji">${jurisdiction.emoji}</span>
       <div class="j-card-compact-info">
-        <div class="j-card-compact-name">${jurisdiction.name}</div>
+        <div class="j-card-compact-name">${escapeHtml(jurisdiction.name)}</div>
         <div class="j-card-compact-sub">${used}/${max} days \u2022 ${ruleLabel(jurisdiction)}</div>
       </div>
       <span class="j-card-compact-count urgency-${urgency}">${remaining}</span>
@@ -238,7 +297,6 @@ export function renderProgressRing(used, total, urgency, size) {
 }
 
 function renderTipsPanel(currentJurisdiction, records, today) {
-  // Inline tips generation to avoid circular module issues
   const tips = generateTipsInline(currentJurisdiction, records, today);
   if (tips.length === 0) return '';
 
@@ -246,8 +304,8 @@ function renderTipsPanel(currentJurisdiction, records, today) {
     <div class="tip-row">
       <div class="tip-icon">${tipIcon(t.icon, t.priority)}</div>
       <div class="tip-content">
-        <div class="tip-title">${t.title}</div>
-        <div class="tip-message">${t.message}</div>
+        <div class="tip-title">${escapeHtml(t.title)}</div>
+        <div class="tip-message">${escapeHtml(t.message)}</div>
       </div>
     </div>
   `).join('');
@@ -262,12 +320,10 @@ function renderTipsPanel(currentJurisdiction, records, today) {
   </div>`;
 }
 
-// Inline tips to avoid async module loading issues
+// Inline tips
 function generateTipsInline(currentJurisdiction, records, today) {
-  // Import tips engine dynamically isn't needed since we can inline
   const tips = [];
 
-  // Only generate deadline tips for trackable jurisdictions (not visa-required, home, or unrestricted)
   if (currentJurisdiction && !currentJurisdiction.visaRequired && !currentJurisdiction.homeCountry && !currentJurisdiction.unrestricted) {
     const remaining = rules.daysRemaining(currentJurisdiction, records, today);
     const used = rules.daysUsed(currentJurisdiction, records, today);
@@ -305,7 +361,6 @@ function generateTipsInline(currentJurisdiction, records, today) {
   if (currentJurisdiction?.id === 'schengen' && schengenJ && !schengenJ.visaRequired) {
     const remaining = rules.daysRemaining(schengenJ, records, today);
     if (remaining <= 30) {
-      // Build suggestion from visa-free destinations only
       const exitOptions = [];
       const candidates = [
         { id: 'georgia', label: 'Georgia' },
@@ -373,4 +428,8 @@ function formatDate(dateStr) {
   const [y, m, d] = dateStr.split('-').map(Number);
   const date = new Date(y, m - 1, d);
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }

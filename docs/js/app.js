@@ -1,15 +1,26 @@
 // Main app controller — wires everything together
-import { hasCompletedOnboarding, getRecords, addRecord, makeRecord, fillGaps, todayStr, getCitizenship } from './services/storage.js';
+import {
+  hasCompletedOnboarding,
+  smartBackfill,
+  setLastSeen,
+  getLastSeen,
+  getCitizenship,
+  getLocationOverride,
+} from './services/storage.js';
 import { detectLocation, isLocationStale } from './services/location.js';
 import { findJurisdictionForCitizenship } from './data/citizenship-rules.js';
+import { jurisdictionForCountry } from './data/jurisdictions.js';
 import { renderDashboard } from './views/dashboard.js';
 import { renderTimeline } from './views/timeline.js';
 import { renderSettings } from './views/settings.js';
 import { showDetail } from './views/detail.js';
 import { showOnboarding } from './views/onboarding.js';
+import { showGapReview } from './views/gap-review.js';
 
 let currentLocation = null;
 let activeTab = 'dashboard';
+let pendingGap = null; // { gapDays, gapStart, gapEndExclusive, lastRecord, currentJurisdictionId }
+let lastBackfillResult = null;
 
 // Boot
 async function init() {
@@ -25,61 +36,73 @@ async function init() {
 }
 
 async function boot() {
-  // Detect location
+  // Detect location (GPS or cached). Manual override wins if set.
   try {
-    currentLocation = await detectLocation();
+    currentLocation = await resolveCurrentLocation();
   } catch (e) {
     console.warn('Location detection failed:', e);
   }
 
-  // Re-resolve jurisdiction with citizenship-aware rules
-  resolveJurisdiction();
+  // Apply citizenship-specific rules to the resolved jurisdiction
+  applyCitizenshipRules();
 
-  // Log today if we have a trackable location (not visa-required)
-  if (currentLocation?.jurisdiction && !currentLocation.jurisdiction.visaRequired && !currentLocation.jurisdiction.homeCountry) {
-    const code = [...currentLocation.jurisdiction.countryCodes][0] || currentLocation.countryCode;
-    const record = makeRecord(new Date(), code, currentLocation.jurisdiction.id, 'gps');
-    addRecord(record);
+  // Smart backfill: logs today, fills safe gaps, flags ambiguous gaps for review
+  lastBackfillResult = smartBackfill(currentLocation);
 
-    // Fill any gap days
-    fillGaps(currentLocation.jurisdiction.id, code);
+  if (lastBackfillResult.needsReview && lastBackfillResult.gap) {
+    pendingGap = {
+      ...lastBackfillResult.gap,
+      currentJurisdictionId: currentLocation?.jurisdiction?.id || null,
+    };
+  } else {
+    pendingGap = null;
   }
 
-  // Render active tab
+  setLastSeen();
+
   renderActiveTab();
   wireTabBar();
   wireEvents();
 
-  // Show stale location banner if needed
-  if (isLocationStale(24) && currentLocation?.cached) {
+  // Show stale location banner if GPS was unavailable and we're relying on cache
+  if (isLocationStale(24) && currentLocation?.cached && !currentLocation?.override) {
     showStaleBanner();
   }
 }
 
-function resolveJurisdiction() {
+async function resolveCurrentLocation() {
+  // Manual override trumps GPS
+  const override = getLocationOverride();
+  if (override) {
+    return {
+      ...override,
+      jurisdiction: jurisdictionForCountry(override.countryCode),
+      override: true,
+    };
+  }
+  return await detectLocation();
+}
+
+function applyCitizenshipRules() {
   if (currentLocation?.jurisdiction) {
-    // Re-resolve with citizenship-specific rules
     const citizenJ = findJurisdictionForCitizenship(currentLocation.jurisdiction.id, getCitizenship());
-    if (citizenJ) {
-      currentLocation.jurisdiction = citizenJ;
-    }
+    if (citizenJ) currentLocation.jurisdiction = citizenJ;
   }
 }
 
 function renderActiveTab() {
-  // Hide all tabs, show active
   document.querySelectorAll('.tab-content').forEach(el => el.hidden = true);
   document.getElementById(`tab-${activeTab}`).hidden = false;
 
-  // Update tab bar active state
   document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.tab === activeTab);
   });
 
-  // Render content
+  const extras = { pendingGap, lastBackfillResult };
+
   switch (activeTab) {
     case 'dashboard':
-      renderDashboard(currentLocation, (jId) => showDetail(jId, currentLocation));
+      renderDashboard(currentLocation, (jId) => showDetail(jId, currentLocation), extras);
       break;
     case 'timeline':
       renderTimeline();
@@ -106,14 +129,16 @@ function wireEvents() {
     refreshBtns.forEach(b => { b.textContent = '\u23F3'; b.disabled = true; });
 
     try {
-      currentLocation = await detectLocation();
-      resolveJurisdiction();
-
-      if (currentLocation?.jurisdiction && !currentLocation.jurisdiction.visaRequired && !currentLocation.jurisdiction.homeCountry) {
-        const code = [...currentLocation.jurisdiction.countryCodes][0] || currentLocation.countryCode;
-        const record = makeRecord(new Date(), code, currentLocation.jurisdiction.id, 'gps');
-        addRecord(record);
-        fillGaps(currentLocation.jurisdiction.id, code);
+      currentLocation = await resolveCurrentLocation();
+      applyCitizenshipRules();
+      lastBackfillResult = smartBackfill(currentLocation);
+      if (lastBackfillResult.needsReview && lastBackfillResult.gap) {
+        pendingGap = {
+          ...lastBackfillResult.gap,
+          currentJurisdictionId: currentLocation?.jurisdiction?.id || null,
+        };
+      } else {
+        pendingGap = null;
       }
     } catch (e) {
       console.warn('Refresh failed:', e);
@@ -122,14 +147,48 @@ function wireEvents() {
     renderActiveTab();
   });
 
-  // Data changed (from settings, detail, etc.)
+  // Data changed (from settings, detail, etc.) — recompute gap state
   document.addEventListener('data-changed', () => {
+    // Recompute gap after data changes (e.g., user added past trips)
+    lastBackfillResult = smartBackfill(currentLocation);
+    if (lastBackfillResult.needsReview && lastBackfillResult.gap) {
+      pendingGap = {
+        ...lastBackfillResult.gap,
+        currentJurisdictionId: currentLocation?.jurisdiction?.id || null,
+      };
+    } else {
+      pendingGap = null;
+    }
     renderActiveTab();
   });
 
   // Citizenship changed — re-resolve jurisdiction and re-render
   document.addEventListener('citizenship-changed', () => {
-    resolveJurisdiction();
+    applyCitizenshipRules();
+    renderActiveTab();
+  });
+
+  // Gap review requested
+  document.addEventListener('open-gap-review', () => {
+    if (!pendingGap) return;
+    showGapReview(pendingGap, currentLocation, () => {
+      document.dispatchEvent(new CustomEvent('data-changed'));
+    });
+  });
+
+  // Location override changed
+  document.addEventListener('location-override-changed', async () => {
+    currentLocation = await resolveCurrentLocation();
+    applyCitizenshipRules();
+    lastBackfillResult = smartBackfill(currentLocation);
+    if (lastBackfillResult.needsReview && lastBackfillResult.gap) {
+      pendingGap = {
+        ...lastBackfillResult.gap,
+        currentJurisdictionId: currentLocation?.jurisdiction?.id || null,
+      };
+    } else {
+      pendingGap = null;
+    }
     renderActiveTab();
   });
 }
@@ -147,9 +206,32 @@ function showStaleBanner() {
 
 // Register service worker
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./sw.js').catch(err => {
+  navigator.serviceWorker.register('./sw.js').then(reg => {
+    // Detect updates so we can prompt a reload
+    reg.addEventListener('updatefound', () => {
+      const nw = reg.installing;
+      if (!nw) return;
+      nw.addEventListener('statechange', () => {
+        if (nw.state === 'installed' && navigator.serviceWorker.controller) {
+          showUpdateBanner();
+        }
+      });
+    });
+  }).catch(err => {
     console.warn('SW registration failed:', err);
   });
+}
+
+function showUpdateBanner() {
+  if (document.getElementById('update-banner')) return;
+  const banner = document.createElement('div');
+  banner.id = 'update-banner';
+  banner.style.cssText = 'position:fixed;top:0;left:0;right:0;background:var(--accent);color:white;text-align:center;padding:calc(var(--safe-top) + 6px) 16px 8px;font-size:13px;font-weight:500;z-index:160;cursor:pointer';
+  banner.textContent = 'A new version is available. Tap to update.';
+  banner.addEventListener('click', () => {
+    location.reload();
+  });
+  document.body.appendChild(banner);
 }
 
 // Start

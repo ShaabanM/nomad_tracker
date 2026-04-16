@@ -35,3 +35,6 @@ playground.xcworkspace
 # Output files from previous work
 output/
 contract_extracted.txt
+
+# Local tooling
+.claude/

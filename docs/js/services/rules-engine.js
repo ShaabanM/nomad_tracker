@@ -88,8 +88,13 @@ export function nextDayFallsOff(jurisdiction, records, asOf = todayStr()) {
   const inWindow = relevant.filter(r => r.date >= windowStart && r.date <= asOf);
   if (inWindow.length === 0) return null;
 
+  // Count how many records share the earliest date in the window, and
+  // return the day that earliest date exits the rolling window.
+  // For windowDays=W, windowStart = asOf - (W-1). A record on date D is in
+  // the window iff D >= windowStart. D falls out on the day asOf = D + W
+  // (when windowStart becomes D+1).
   const earliest = inWindow[0];
-  const fallOffDate = addDays(earliest.date, jurisdiction.windowDays + 1);
+  const fallOffDate = addDays(earliest.date, jurisdiction.windowDays);
   const count = inWindow.filter(r => r.date === earliest.date).length;
 
   return { date: fallOffDate, count };

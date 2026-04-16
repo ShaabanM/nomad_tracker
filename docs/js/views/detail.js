@@ -2,7 +2,18 @@
 import { countryFlag, ruleLabel, ruleDescription } from '../data/jurisdictions.js';
 import { findJurisdictionForCitizenship } from '../data/citizenship-rules.js';
 import * as rules from '../services/rules-engine.js';
-import { getRecords, addDateRange, clearJurisdiction, deleteRecord, todayStr, toDateStr, parseDate, getCitizenship } from '../services/storage.js';
+import {
+  getRecords,
+  addDateRange,
+  clearJurisdiction,
+  deleteRecord,
+  todayStr,
+  toDateStr,
+  parseDate,
+  addDays,
+  diffDays,
+  getCitizenship,
+} from '../services/storage.js';
 import { renderProgressRing } from './dashboard.js';
 
 export function showDetail(jurisdictionId, location) {
@@ -21,12 +32,12 @@ export function showDetail(jurisdictionId, location) {
       <div class="modal-handle"></div>
       <div class="card" style="text-align:center">
         <div style="font-size:48px;margin-bottom:12px">${jurisdiction.emoji}</div>
-        <div style="font-size:22px;font-weight:700">${jurisdiction.name}</div>
+        <div style="font-size:22px;font-weight:700">${escapeHtml(jurisdiction.name)}</div>
         <div style="margin-top:16px">
           <span class="visa-badge" style="font-size:16px;padding:6px 16px">VISA REQUIRED</span>
         </div>
         <div style="font-size:14px;color:var(--text-secondary);margin-top:16px;line-height:1.5">
-          ${jurisdiction.visaInfo || 'A visa is required for this destination.'}
+          ${escapeHtml(jurisdiction.visaInfo || 'A visa is required for this destination.')}
         </div>
       </div>
       ${jRecords.length > 0 ? renderDayLog(jRecords, jurisdiction) : ''}
@@ -42,7 +53,7 @@ export function showDetail(jurisdictionId, location) {
       <div class="modal-handle"></div>
       <div class="card" style="text-align:center">
         <div style="font-size:48px;margin-bottom:12px">${jurisdiction.emoji}</div>
-        <div style="font-size:22px;font-weight:700">${jurisdiction.name}</div>
+        <div style="font-size:22px;font-weight:700">${escapeHtml(jurisdiction.name)}</div>
         <div style="margin-top:16px">
           <span class="home-badge" style="font-size:16px;padding:6px 16px">HOME COUNTRY</span>
         </div>
@@ -61,13 +72,13 @@ export function showDetail(jurisdictionId, location) {
     const notesHtml = (jurisdiction.notes?.length > 0)
       ? `<div class="card">
           <div class="rule-card-label">⚠️ Notes</div>
-          ${jurisdiction.notes.map(n => `<div class="note-item"><span class="note-bullet">•</span><span>${n}</span></div>`).join('')}
+          ${jurisdiction.notes.map(n => `<div class="note-item"><span class="note-bullet">•</span><span>${escapeHtml(n)}</span></div>`).join('')}
         </div>`
       : '';
     const tipsHtml = (jurisdiction.tips?.length > 0)
       ? `<div class="card">
           <div class="rule-card-label">💡 Tips</div>
-          ${jurisdiction.tips.map(t => `<div class="tip-item"><span class="tip-bullet">→</span><span>${t}</span></div>`).join('')}
+          ${jurisdiction.tips.map(t => `<div class="tip-item"><span class="tip-bullet">→</span><span>${escapeHtml(t)}</span></div>`).join('')}
         </div>`
       : '';
 
@@ -75,7 +86,7 @@ export function showDetail(jurisdictionId, location) {
       <div class="modal-handle"></div>
       <div class="card" style="text-align:center">
         <div style="font-size:48px;margin-bottom:12px">${jurisdiction.emoji}</div>
-        <div style="font-size:22px;font-weight:700">${jurisdiction.name}</div>
+        <div style="font-size:22px;font-weight:700">${escapeHtml(jurisdiction.name)}</div>
         <div style="margin-top:16px">
           <span class="home-badge" style="font-size:16px;padding:6px 16px">UNRESTRICTED</span>
         </div>
@@ -97,6 +108,13 @@ export function showDetail(jurisdictionId, location) {
   const max = jurisdiction.maxDays;
   const leaveBy = used > 0 ? rules.mustLeaveBy(jurisdiction, records, today) : null;
   const pct = Math.min(100, (used / max) * 100);
+
+  // Source breakdown
+  const sourceCounts = { gps: 0, inferred: 0, manual: 0 };
+  for (const r of jRecords) {
+    sourceCounts[r.source] = (sourceCounts[r.source] || 0) + 1;
+  }
+  const hasInferred = sourceCounts.inferred > 0;
 
   // Rule explanation
   let ruleExplanation = '';
@@ -123,7 +141,7 @@ export function showDetail(jurisdictionId, location) {
   const notesHtml = jurisdiction.notes.length > 0
     ? `<div class="card">
         <div class="rule-card-label">\u26A0\uFE0F Important Notes</div>
-        ${jurisdiction.notes.map(n => `<div class="note-item"><span class="note-bullet">\u2022</span><span>${n}</span></div>`).join('')}
+        ${jurisdiction.notes.map(n => `<div class="note-item"><span class="note-bullet">\u2022</span><span>${escapeHtml(n)}</span></div>`).join('')}
       </div>`
     : '';
 
@@ -131,21 +149,22 @@ export function showDetail(jurisdictionId, location) {
   const tipsHtml = jurisdiction.tips.length > 0
     ? `<div class="card">
         <div class="rule-card-label">\u{1F4A1} Tips</div>
-        ${jurisdiction.tips.map(t => `<div class="tip-item"><span class="tip-bullet">\u2192</span><span>${t}</span></div>`).join('')}
+        ${jurisdiction.tips.map(t => `<div class="tip-item"><span class="tip-bullet">\u2192</span><span>${escapeHtml(t)}</span></div>`).join('')}
       </div>`
     : '';
 
-  // Day log (max 30)
-  const logRows = jRecords.slice(0, 30).map(r => `
-    <div class="day-log-row" data-record-id="${r.id}">
-      <span class="day-log-flag">${countryFlag(r.countryCode)}</span>
-      <span class="day-log-date">${formatDateLong(r.date)}</span>
-      <span class="day-log-source">${r.source === 'gps' ? '\u{1F4CD}' : '\u270B'}</span>
-      <button class="day-log-delete" title="Delete">\u2715</button>
-    </div>
-  `).join('');
+  const logRows = jRecords.slice(0, 30).map(r => renderDayRow(r)).join('');
 
-  const moreText = jRecords.length > 30 ? `<div style="font-size:12px;color:var(--text-secondary)">+ ${jRecords.length - 30} more days</div>` : '';
+  const moreText = jRecords.length > 30 ? `<div style="font-size:12px;color:var(--text-secondary);padding-top:4px">+ ${jRecords.length - 30} more days</div>` : '';
+
+  // Source legend (if any inferred days)
+  const sourceLegend = hasInferred
+    ? `<div style="font-size:11px;color:var(--text-secondary);margin-bottom:8px;display:flex;gap:14px;flex-wrap:wrap">
+        <span>\u{1F4CD} GPS (${sourceCounts.gps})</span>
+        <span>\u270B Manual (${sourceCounts.manual})</span>
+        <span>\u{2728} Inferred (${sourceCounts.inferred})</span>
+      </div>`
+    : '';
 
   modal.querySelector('.modal-sheet').innerHTML = `
     <div class="modal-handle"></div>
@@ -180,13 +199,14 @@ export function showDetail(jurisdictionId, location) {
         <div class="rule-card-label">\u{1F4C5} Day Log</div>
         <span style="font-size:12px;color:var(--text-secondary)">${jRecords.length} days</span>
       </div>
+      ${sourceLegend}
       ${jRecords.length === 0 ? '<div style="font-size:13px;color:var(--text-secondary)">No days recorded yet.</div>' : ''}
       ${logRows}
       ${moreText}
     </div>
 
     <button class="btn btn-bordered" id="detail-add-days" style="margin-bottom:8px">\u2795 Add Past Days</button>
-    <button class="btn btn-destructive" id="detail-clear">\u{1F5D1} Clear All Days for ${jurisdiction.name}</button>
+    <button class="btn btn-destructive" id="detail-clear">\u{1F5D1} Clear All Days for ${escapeHtml(jurisdiction.name)}</button>
     <button class="btn btn-text" id="detail-close" style="margin-top:8px">Close</button>`;
 
   modal.classList.add('open');
@@ -234,59 +254,82 @@ export function showDetail(jurisdictionId, location) {
 
 function showAddDaysForJurisdiction(jurisdiction, location) {
   const modal = document.getElementById('modal');
+  const today = todayStr();
   const countryCodes = [...jurisdiction.countryCodes];
   const countryOptions = countryCodes.length > 1
     ? `<div class="form-group">
         <label class="form-label">Country</label>
         <select class="form-select" id="add-country">
-          ${countryCodes.sort().map(c => `<option value="${c}">${countryFlag(c)} ${new Intl.DisplayNames(['en'], {type: 'region'}).of(c)}</option>`).join('')}
+          ${countryCodes.sort().map(c => `<option value="${c}">${countryFlag(c)} ${escapeHtml(countryName(c))}</option>`).join('')}
         </select>
       </div>`
     : '';
 
+  // Smart defaults: start = 7 days ago, end = today. Capped at today.
+  const defaultStart = addDays(today, -7);
+  const defaultEnd = today;
+
   modal.querySelector('.modal-sheet').innerHTML = `
     <div class="modal-handle"></div>
     <div class="modal-title">Add Past Days</div>
-    <div style="font-size:22px;margin-bottom:16px">${jurisdiction.emoji} ${jurisdiction.name}</div>
+    <div style="font-size:22px;margin-bottom:16px">${jurisdiction.emoji} ${escapeHtml(jurisdiction.name)}</div>
     <div class="form-group">
       <label class="form-label">From</label>
-      <input type="date" class="form-input" id="add-start" value="${toDateStr(new Date())}">
+      <input type="date" class="form-input" id="add-start" value="${defaultStart}" max="${today}">
     </div>
     <div class="form-group">
       <label class="form-label">To</label>
-      <input type="date" class="form-input" id="add-end" value="${toDateStr(new Date())}">
+      <input type="date" class="form-input" id="add-end" value="${defaultEnd}" max="${today}">
     </div>
     ${countryOptions}
     <div id="add-preview" style="font-size:13px;color:var(--text-secondary);margin-bottom:16px"></div>
     <button class="btn btn-primary" id="add-confirm">Add Days</button>
     <button class="btn btn-text" id="add-back" style="margin-top:8px">Back</button>`;
 
+  const startInput = document.getElementById('add-start');
+  const endInput = document.getElementById('add-end');
+  const preview = document.getElementById('add-preview');
+  const confirmBtn = document.getElementById('add-confirm');
+
   const updatePreview = () => {
-    const start = document.getElementById('add-start').value;
-    const end = document.getElementById('add-end').value;
-    if (start && end) {
-      const days = Math.max(1, Math.round((new Date(end + 'T00:00') - new Date(start + 'T00:00')) / 86400000) + 1);
-      document.getElementById('add-preview').textContent = `This will add ${days} day${days === 1 ? '' : 's'} to ${jurisdiction.name}`;
+    const start = startInput.value;
+    const end = endInput.value;
+    if (!start || !end) {
+      preview.textContent = '';
+      confirmBtn.disabled = true;
+      return;
     }
+    if (start > today || end > today) {
+      preview.innerHTML = '<span style="color:var(--red)">Dates cannot be in the future.</span>';
+      confirmBtn.disabled = true;
+      return;
+    }
+    if (start > end) {
+      preview.innerHTML = '<span style="color:var(--red)">"From" must be on or before "To".</span>';
+      confirmBtn.disabled = true;
+      return;
+    }
+    const days = diffDays(end, start) + 1;
+    preview.textContent = `This will add ${days} day${days === 1 ? '' : 's'} to ${jurisdiction.name}.`;
+    confirmBtn.disabled = false;
   };
 
-  document.getElementById('add-start').addEventListener('change', updatePreview);
-  document.getElementById('add-end').addEventListener('change', updatePreview);
+  startInput.addEventListener('change', updatePreview);
+  endInput.addEventListener('change', updatePreview);
   updatePreview();
 
   document.getElementById('add-back').addEventListener('click', () => {
     showDetail(jurisdiction.id, location);
   });
 
-  document.getElementById('add-confirm').addEventListener('click', () => {
-    const start = document.getElementById('add-start').value;
-    const end = document.getElementById('add-end').value;
+  confirmBtn.addEventListener('click', () => {
+    const start = startInput.value;
+    const end = endInput.value;
     const code = document.getElementById('add-country')?.value || countryCodes[0] || 'XX';
-    if (start && end) {
-      addDateRange(jurisdiction.id, code, new Date(start + 'T00:00'), new Date(end + 'T00:00'), 'manual');
-      document.dispatchEvent(new CustomEvent('data-changed'));
-      showDetail(jurisdiction.id, location);
-    }
+    if (!start || !end || start > end || start > today || end > today) return;
+    addDateRange(jurisdiction.id, code, new Date(start + 'T00:00'), new Date(end + 'T00:00'), 'manual');
+    document.dispatchEvent(new CustomEvent('data-changed'));
+    showDetail(jurisdiction.id, location);
   });
 }
 
@@ -304,15 +347,31 @@ function formatDateLong(dateStr) {
   return new Date(y, m - 1, d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
-function renderDayLog(jRecords, jurisdiction) {
-  const logRows = jRecords.slice(0, 30).map(r => `
+function sourceIcon(source) {
+  if (source === 'gps') return '\u{1F4CD}';
+  if (source === 'inferred') return '\u2728';
+  return '\u270B'; // manual
+}
+
+function sourceTitle(source) {
+  if (source === 'gps') return 'Logged via GPS';
+  if (source === 'inferred') return 'Inferred — assumed you stayed in this jurisdiction';
+  return 'Manually added';
+}
+
+function renderDayRow(r) {
+  return `
     <div class="day-log-row" data-record-id="${r.id}">
       <span class="day-log-flag">${countryFlag(r.countryCode)}</span>
       <span class="day-log-date">${formatDateLong(r.date)}</span>
-      <span class="day-log-source">${r.source === 'gps' ? '📍' : '✋'}</span>
-      <button class="day-log-delete" title="Delete">✕</button>
+      <span class="day-log-source" title="${sourceTitle(r.source)}">${sourceIcon(r.source)}</span>
+      <button class="day-log-delete" title="Delete">\u2715</button>
     </div>
-  `).join('');
+  `;
+}
+
+function renderDayLog(jRecords, jurisdiction) {
+  const logRows = jRecords.slice(0, 30).map(r => renderDayRow(r)).join('');
   const moreText = jRecords.length > 30 ? `<div style="font-size:12px;color:var(--text-secondary)">+ ${jRecords.length - 30} more days</div>` : '';
   return `<div class="card">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
@@ -322,7 +381,7 @@ function renderDayLog(jRecords, jurisdiction) {
     ${logRows}
     ${moreText}
   </div>
-  <button class="btn btn-destructive" id="detail-clear">🗑 Clear All Days for ${jurisdiction.name}</button>`;
+  <button class="btn btn-destructive" id="detail-clear">🗑 Clear All Days for ${escapeHtml(jurisdiction.name)}</button>`;
 }
 
 function wireCloseAndDelete(modal, jurisdictionId, jurisdiction, location, jRecords) {
@@ -362,4 +421,13 @@ function wireCloseAndDelete(modal, jurisdictionId, jurisdiction, location, jReco
     }
   };
   modal.addEventListener('click', closeHandler);
+}
+
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function countryName(code) {
+  try { return new Intl.DisplayNames(['en'], { type: 'region' }).of(code); }
+  catch { return code; }
 }

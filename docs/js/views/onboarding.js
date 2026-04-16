@@ -1,7 +1,15 @@
 // Onboarding flow for first launch
 import { ALL_JURISDICTIONS } from '../data/jurisdictions.js';
 import { CITIZENSHIPS, getJurisdictionsForCitizenship } from '../data/citizenship-rules.js';
-import { setOnboardingComplete, addDateRange, toDateStr, setCitizenship, getCitizenship } from '../services/storage.js';
+import {
+  setOnboardingComplete,
+  addDateRange,
+  toDateStr,
+  todayStr,
+  addDays,
+  setCitizenship,
+  getCitizenship,
+} from '../services/storage.js';
 import { detectLocation } from '../services/location.js';
 
 export function showOnboarding(onComplete) {
@@ -57,8 +65,9 @@ export function showOnboarding(onComplete) {
       startBtn.addEventListener('click', () => {
         const jId = overlay.querySelector('#onb-jurisdiction')?.value;
         const arrivalDate = overlay.querySelector('#onb-arrival')?.value;
+        const today = todayStr();
 
-        if (jId && jId !== 'none' && arrivalDate) {
+        if (jId && jId !== 'none' && arrivalDate && arrivalDate <= today) {
           const jurisdictions = getJurisdictionsForCitizenship(getCitizenship());
           const j = jurisdictions.find(j => j.id === jId);
           if (j) {
@@ -157,9 +166,17 @@ function renderInitialDaysPage(detectedLocation) {
   // Only show visa-free jurisdictions for the selected citizenship
   const jurisdictions = getJurisdictionsForCitizenship(getCitizenship());
   const visaFree = jurisdictions.filter(j => !j.visaRequired && !j.homeCountry && !j.unrestricted);
+  const detectedId = detectedLocation?.jurisdiction?.id;
   const options = visaFree.map(j =>
-    `<option value="${j.id}">${j.emoji} ${j.name}</option>`
+    `<option value="${j.id}" ${j.id === detectedId ? 'selected' : ''}>${j.emoji} ${j.name}</option>`
   ).join('');
+
+  // Pre-select "None" only if no detected match
+  const selectedNone = detectedId ? '' : 'selected';
+
+  const today = todayStr();
+  // Default arrival: 3 days ago (reasonable for someone "already traveling")
+  const defaultArrival = addDays(today, -3);
 
   const detectedBtn = detectedLocation?.jurisdiction
     ? `<button class="btn btn-bordered" id="use-detected" style="margin-bottom:12px">📍 Use detected: ${detectedLocation.jurisdiction.emoji} ${detectedLocation.jurisdiction.name}</button>`
@@ -174,7 +191,7 @@ function renderInitialDaysPage(detectedLocation) {
       <div class="form-group">
         <label class="form-label">Jurisdiction</label>
         <select class="form-select" id="onb-jurisdiction">
-          <option value="none">None — starting fresh</option>
+          <option value="none" ${selectedNone}>None — starting fresh</option>
           ${options}
         </select>
       </div>
@@ -183,7 +200,7 @@ function renderInitialDaysPage(detectedLocation) {
 
       <div class="form-group">
         <label class="form-label">Arrived on</label>
-        <input type="date" class="form-input" id="onb-arrival" value="${toDateStr(new Date())}">
+        <input type="date" class="form-input" id="onb-arrival" value="${defaultArrival}" max="${today}">
       </div>
     </div>
 

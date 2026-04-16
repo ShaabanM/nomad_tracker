@@ -1,5 +1,5 @@
 // Service Worker for offline caching
-const CACHE_NAME = 'nomad-tracker-v3';
+const CACHE_NAME = 'nomad-tracker-v5';
 const ASSETS = [
   './',
   './index.html',
@@ -16,6 +16,8 @@ const ASSETS = [
   './js/views/settings.js',
   './js/views/detail.js',
   './js/views/onboarding.js',
+  './js/views/gap-review.js',
+  './js/views/location-override.js',
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png',
@@ -34,31 +36,52 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
       Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
-    )
+    ).then(() => self.clients.claim())
   );
-  self.clients.claim();
 });
 
-// Fetch: cache-first for app assets, network-first for API calls
+// Fetch: network-first for HTML + module JS so updates reach users fast;
+// cache-first for static assets (CSS, icons, images); network-first for API.
 self.addEventListener('fetch', (event) => {
-  const url = new URL(event.request.url);
+  const req = event.request;
+  if (req.method !== 'GET') return;
 
-  // Network-first for reverse geocoding API
+  const url = new URL(req.url);
+
+  // Network-first for reverse-geocoding API
   if (url.hostname === 'api.bigdatacloud.net') {
     event.respondWith(
-      fetch(event.request).catch(() => caches.match(event.request))
+      fetch(req).catch(() => caches.match(req))
     );
     return;
   }
 
-  // Cache-first for app assets
-  event.respondWith(
-    caches.match(event.request).then((cached) => {
-      return cached || fetch(event.request).then((response) => {
-        // Cache new successful responses
-        if (response.ok) {
+  // Network-first for HTML + JS so we don't serve stale code indefinitely
+  const isHtmlOrJs = req.destination === 'document' ||
+    req.destination === 'script' ||
+    url.pathname.endsWith('.html') ||
+    url.pathname.endsWith('.js');
+
+  if (isHtmlOrJs) {
+    event.respondWith(
+      fetch(req).then((response) => {
+        if (response && response.ok) {
           const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+          caches.open(CACHE_NAME).then((cache) => cache.put(req, clone));
+        }
+        return response;
+      }).catch(() => caches.match(req))
+    );
+    return;
+  }
+
+  // Cache-first for everything else (CSS, icons, manifest)
+  event.respondWith(
+    caches.match(req).then((cached) => {
+      return cached || fetch(req).then((response) => {
+        if (response && response.ok) {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(req, clone));
         }
         return response;
       });

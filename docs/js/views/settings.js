@@ -2,7 +2,21 @@
 import { ALL_JURISDICTIONS, countryFlag, ruleDescription } from '../data/jurisdictions.js';
 import { CITIZENSHIPS, getJurisdictionsForCitizenship } from '../data/citizenship-rules.js';
 import * as rules from '../services/rules-engine.js';
-import { getRecords, addDateRange, clearAllRecords, todayStr, toDateStr, getCitizenship, setCitizenship } from '../services/storage.js';
+import {
+  getRecords,
+  addDateRange,
+  clearAllRecords,
+  todayStr,
+  toDateStr,
+  addDays,
+  diffDays,
+  getCitizenship,
+  setCitizenship,
+  exportData,
+  importData,
+  getLocationOverride,
+} from '../services/storage.js';
+import { showLocationOverride } from './location-override.js';
 
 export function renderSettings(location, onJurisdictionClick) {
   const records = getRecords();
@@ -11,16 +25,17 @@ export function renderSettings(location, onJurisdictionClick) {
   const citizenshipCode = getCitizenship();
   const citizenship = CITIZENSHIPS.find(c => c.code === citizenshipCode) || CITIZENSHIPS[0];
   const jurisdictions = getJurisdictionsForCitizenship(citizenshipCode);
+  const override = getLocationOverride();
 
   // Location status
   const locationStatus = location
     ? `<div class="settings-row">
         <span class="settings-icon" style="color:var(--green)">📍</span>
-        <span class="settings-label">Location tracking active</span>
+        <span class="settings-label">${override ? 'Manual override active' : 'Location tracking active'}</span>
       </div>
       <div class="settings-row">
         <span class="settings-label">Current location</span>
-        <span class="settings-value">${location.countryCode ? countryFlag(location.countryCode) + ' ' + location.country : 'Unknown'}</span>
+        <span class="settings-value">${location.countryCode ? countryFlag(location.countryCode) + ' ' + escapeHtml(location.country) : 'Unknown'}</span>
       </div>`
     : `<div class="settings-row">
         <span class="settings-icon" style="color:var(--red)">❌</span>
@@ -35,7 +50,7 @@ export function renderSettings(location, onJurisdictionClick) {
         <div class="settings-row clickable" data-jurisdiction="${j.id}">
           <span class="settings-icon">${j.emoji}</span>
           <div class="flex-1">
-            <div style="font-size:15px">${j.name}</div>
+            <div style="font-size:15px">${escapeHtml(j.name)}</div>
             <div style="font-size:12px;color:var(--orange)">Visa required</div>
           </div>
           <span class="visa-badge">VISA</span>
@@ -45,7 +60,7 @@ export function renderSettings(location, onJurisdictionClick) {
         <div class="settings-row" data-jurisdiction="${j.id}">
           <span class="settings-icon">${j.emoji}</span>
           <div class="flex-1">
-            <div style="font-size:15px">${j.name}</div>
+            <div style="font-size:15px">${escapeHtml(j.name)}</div>
             <div style="font-size:12px;color:var(--green)">Home country</div>
           </div>
           <span class="home-badge">HOME</span>
@@ -55,7 +70,7 @@ export function renderSettings(location, onJurisdictionClick) {
         <div class="settings-row clickable" data-jurisdiction="${j.id}">
           <span class="settings-icon">${j.emoji}</span>
           <div class="flex-1">
-            <div style="font-size:15px">${j.name}</div>
+            <div style="font-size:15px">${escapeHtml(j.name)}</div>
             <div style="font-size:12px;color:var(--green)">Unrestricted access</div>
           </div>
           <span class="home-badge">FREE</span>
@@ -67,7 +82,7 @@ export function renderSettings(location, onJurisdictionClick) {
         <div class="settings-row clickable" data-jurisdiction="${j.id}">
           <span class="settings-icon">${j.emoji}</span>
           <div class="flex-1">
-            <div style="font-size:15px">${j.name}</div>
+            <div style="font-size:15px">${escapeHtml(j.name)}</div>
             <div style="font-size:12px;color:var(--text-secondary)">${ruleDescription(j)}</div>
           </div>
           ${usedLabel ? `<span class="settings-value">${usedLabel}</span>` : ''}
@@ -86,7 +101,7 @@ export function renderSettings(location, onJurisdictionClick) {
       <div class="settings-row clickable" id="change-citizenship">
         <span class="settings-icon" style="font-size:24px">${citizenship.emoji}</span>
         <div class="flex-1">
-          <div style="font-size:15px;font-weight:600">${citizenship.name}</div>
+          <div style="font-size:15px;font-weight:600">${escapeHtml(citizenship.name)}</div>
           <div style="font-size:12px;color:var(--text-secondary)">${visaFreeCount} visa-free jurisdictions</div>
         </div>
         <span class="settings-value" style="font-size:13px">Change</span>
@@ -94,8 +109,18 @@ export function renderSettings(location, onJurisdictionClick) {
       </div>
     </div>
 
-    <div class="section-title">Location Status</div>
-    <div class="card">${locationStatus}</div>
+    <div class="section-title">Location</div>
+    <div class="card">
+      ${locationStatus}
+      <div class="settings-row clickable" id="override-row">
+        <span class="settings-icon">${override ? '\u270F\uFE0F' : '\u{1F5FA}\uFE0F'}</span>
+        <div class="flex-1">
+          <div style="font-size:15px">${override ? 'Change manual location' : 'Set location manually'}</div>
+          <div style="font-size:12px;color:var(--text-secondary)">${override ? 'GPS is currently overridden' : 'Useful on desktop or when GPS is wrong'}</div>
+        </div>
+        <span class="chevron-right"></span>
+      </div>
+    </div>
 
     <div class="section-title">Add Past Travel</div>
     <div class="card">
@@ -107,6 +132,16 @@ export function renderSettings(location, onJurisdictionClick) {
 
     <div class="section-title">All Jurisdictions</div>
     <div class="card" style="padding:0 16px">${jurisdictionRows}</div>
+
+    <div class="section-title">Backup & Restore</div>
+    <div class="card">
+      <button class="btn btn-bordered" id="export-btn">\u2B07\uFE0F Export data (JSON)</button>
+      <button class="btn btn-bordered" id="import-btn" style="margin-top:8px">\u2B06\uFE0F Import data (JSON)</button>
+      <input type="file" id="import-file" accept="application/json,.json" style="display:none">
+      <div style="font-size:12px;color:var(--text-secondary);margin-top:8px">
+        Save a backup or move your records to another device. Imports merge by date + jurisdiction; duplicates are skipped.
+      </div>
+    </div>
 
     <div class="section-title">About</div>
     <div class="card">
@@ -142,6 +177,44 @@ export function renderSettings(location, onJurisdictionClick) {
     showAddTravelModal();
   });
 
+  // Wire up override
+  container.querySelector('#override-row').addEventListener('click', () => {
+    showLocationOverride();
+  });
+
+  // Export
+  container.querySelector('#export-btn').addEventListener('click', () => {
+    const blob = new Blob([JSON.stringify(exportData(), null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `nomad-tracker-backup-${today}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  });
+
+  // Import
+  const fileInput = container.querySelector('#import-file');
+  container.querySelector('#import-btn').addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', async () => {
+    const file = fileInput.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      const result = importData(data);
+      alert(`Import complete.\nImported: ${result.imported}\nSkipped duplicates/invalid: ${result.skipped}`);
+      document.dispatchEvent(new CustomEvent('data-changed'));
+      renderSettings(location, onJurisdictionClick);
+    } catch (err) {
+      alert(`Import failed: ${err.message}`);
+    } finally {
+      fileInput.value = '';
+    }
+  });
+
   // Wire up clear all
   container.querySelector('#clear-all-btn').addEventListener('click', () => {
     if (confirm('This will delete ALL recorded travel days across all jurisdictions. This cannot be undone.')) {
@@ -158,7 +231,7 @@ function showCitizenshipModal(currentCode, onSelect) {
     `<label class="citizenship-option">
       <input type="radio" name="citizenship" value="${c.code}" ${c.code === currentCode ? 'checked' : ''}>
       <span style="font-size:24px">${c.emoji}</span>
-      <span style="font-size:16px;font-weight:500">${c.name}</span>
+      <span style="font-size:16px;font-weight:500">${escapeHtml(c.name)}</span>
     </label>`
   ).join('');
 
@@ -199,8 +272,11 @@ function showAddTravelModal() {
   const jurisdictions = getJurisdictionsForCitizenship(citizenshipCode);
   const trackable = jurisdictions.filter(j => !j.visaRequired && !j.homeCountry && !j.unrestricted);
   const options = trackable.map(j =>
-    `<option value="${j.id}">${j.emoji} ${j.name}</option>`
+    `<option value="${j.id}">${j.emoji} ${escapeHtml(j.name)}</option>`
   ).join('');
+
+  const today = todayStr();
+  const defaultStart = addDays(today, -7);
 
   modal.querySelector('.modal-sheet').innerHTML = `
     <div class="modal-handle"></div>
@@ -211,11 +287,11 @@ function showAddTravelModal() {
     </div>
     <div class="form-group">
       <label class="form-label">From</label>
-      <input type="date" class="form-input" id="modal-start" value="${toDateStr(new Date())}">
+      <input type="date" class="form-input" id="modal-start" value="${defaultStart}" max="${today}">
     </div>
     <div class="form-group">
       <label class="form-label">To</label>
-      <input type="date" class="form-input" id="modal-end" value="${toDateStr(new Date())}">
+      <input type="date" class="form-input" id="modal-end" value="${today}" max="${today}">
     </div>
     <div id="modal-preview" style="font-size:13px;color:var(--text-secondary);margin-bottom:16px"></div>
     <button class="btn btn-primary" id="modal-add">Add Days</button>
@@ -223,40 +299,58 @@ function showAddTravelModal() {
 
   modal.classList.add('open');
 
+  const startInput = document.getElementById('modal-start');
+  const endInput = document.getElementById('modal-end');
+  const jSelect = document.getElementById('modal-jurisdiction');
+  const preview = document.getElementById('modal-preview');
+  const addBtn = document.getElementById('modal-add');
+
   const updatePreview = () => {
-    const start = document.getElementById('modal-start').value;
-    const end = document.getElementById('modal-end').value;
-    if (start && end) {
-      const days = Math.max(1, Math.round((new Date(end + 'T00:00') - new Date(start + 'T00:00')) / 86400000) + 1);
-      const j = trackable.find(j => j.id === document.getElementById('modal-jurisdiction').value);
-      document.getElementById('modal-preview').textContent =
-        `This will add ${days} day${days === 1 ? '' : 's'} to ${j?.name || 'jurisdiction'}`;
+    const start = startInput.value;
+    const end = endInput.value;
+    if (!start || !end) { addBtn.disabled = true; preview.textContent = ''; return; }
+    if (start > today || end > today) {
+      preview.innerHTML = '<span style="color:var(--red)">Dates cannot be in the future.</span>';
+      addBtn.disabled = true;
+      return;
     }
+    if (start > end) {
+      preview.innerHTML = '<span style="color:var(--red)">"From" must be on or before "To".</span>';
+      addBtn.disabled = true;
+      return;
+    }
+    const days = diffDays(end, start) + 1;
+    const j = trackable.find(j => j.id === jSelect.value);
+    preview.textContent = `This will add ${days} day${days === 1 ? '' : 's'} to ${j?.name || 'jurisdiction'}.`;
+    addBtn.disabled = false;
   };
 
-  document.getElementById('modal-start').addEventListener('change', updatePreview);
-  document.getElementById('modal-end').addEventListener('change', updatePreview);
-  document.getElementById('modal-jurisdiction').addEventListener('change', updatePreview);
+  startInput.addEventListener('change', updatePreview);
+  endInput.addEventListener('change', updatePreview);
+  jSelect.addEventListener('change', updatePreview);
   updatePreview();
 
   document.getElementById('modal-cancel').addEventListener('click', () => {
     modal.classList.remove('open');
   });
 
-  document.getElementById('modal-add').addEventListener('click', () => {
-    const jId = document.getElementById('modal-jurisdiction').value;
-    const start = document.getElementById('modal-start').value;
-    const end = document.getElementById('modal-end').value;
+  addBtn.addEventListener('click', () => {
+    const jId = jSelect.value;
+    const start = startInput.value;
+    const end = endInput.value;
     const j = trackable.find(j => j.id === jId);
-    if (j && start && end) {
-      const code = [...j.countryCodes][0] || 'XX';
-      addDateRange(jId, code, new Date(start + 'T00:00'), new Date(end + 'T00:00'), 'manual');
-      modal.classList.remove('open');
-      document.dispatchEvent(new CustomEvent('data-changed'));
-    }
+    if (!j || !start || !end || start > end || start > today || end > today) return;
+    const code = [...j.countryCodes][0] || 'XX';
+    addDateRange(jId, code, new Date(start + 'T00:00'), new Date(end + 'T00:00'), 'manual');
+    modal.classList.remove('open');
+    document.dispatchEvent(new CustomEvent('data-changed'));
   });
 
   modal.addEventListener('click', (e) => {
     if (e.target === modal) modal.classList.remove('open');
   }, { once: true });
+}
+
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }

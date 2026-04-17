@@ -2,14 +2,29 @@
 import { countryFlag, ruleLabel, ruleDescription } from '../data/jurisdictions.js';
 import { getJurisdictionsForCitizenship, findJurisdictionForCitizenship } from '../data/citizenship-rules.js';
 import * as rules from '../services/rules-engine.js';
-import { getRecords, todayStr, getCitizenship, getLocationOverride } from '../services/storage.js';
+import { getRecords, todayStr, getCitizenship, getLocationOverride, getMode, setMode } from '../services/storage.js';
 import { showLocationOverride } from './location-override.js';
+import { renderTaxDashboard } from './tax-dashboard.js';
 
 export function renderDashboard(location, onCardClick, extras = {}) {
   const records = getRecords();
   const today = todayStr();
-  const { pendingGap, lastBackfillResult } = extras;
+  const { pendingGap, lastBackfillResult, taxDisplayYear } = extras;
+  const mode = getMode();
 
+  const container = document.getElementById('tab-dashboard');
+
+  // Always render the title + mode toggle first
+  let headerHtml = `<div class="nav-title">Nomad Tracker</div>${renderModeToggle(mode)}`;
+
+  if (mode === 'tax') {
+    container.innerHTML = headerHtml;
+    wireModeToggle(container);
+    renderTaxDashboard(location, { displayYear: taxDisplayYear || new Date().getFullYear() });
+    return;
+  }
+
+  // Visa mode (default)
   let html = '';
 
   // Gap review banner (if unresolved ambiguous gap)
@@ -45,8 +60,8 @@ export function renderDashboard(location, onCardClick, extras = {}) {
   // Tips
   html += renderTipsPanel(location?.jurisdiction, records, today);
 
-  const container = document.getElementById('tab-dashboard');
-  container.innerHTML = `<div class="nav-title">Nomad Tracker</div>${html}`;
+  container.innerHTML = headerHtml + html;
+  wireModeToggle(container);
 
   // Wire up card clicks
   container.querySelectorAll('[data-jurisdiction]').forEach(el => {
@@ -91,6 +106,33 @@ export function renderDashboard(location, onCardClick, extras = {}) {
       }
     });
   }
+}
+
+/* ---- Mode toggle (Visa / Tax) ---- */
+
+function renderModeToggle(mode) {
+  return `<div class="mode-toggle" role="tablist" aria-label="Mode">
+    <button class="mode-btn ${mode === 'visa' ? 'active' : ''}" data-mode="visa" role="tab" aria-selected="${mode === 'visa'}">
+      <svg width="14" height="14"><use href="#icon-globe"/></svg>
+      Visa
+    </button>
+    <button class="mode-btn ${mode === 'tax' ? 'active' : ''}" data-mode="tax" role="tab" aria-selected="${mode === 'tax'}">
+      <svg width="14" height="14"><use href="#icon-sparkle"/></svg>
+      Tax
+      <span class="mode-beta">BETA</span>
+    </button>
+  </div>`;
+}
+
+function wireModeToggle(container) {
+  container.querySelectorAll('.mode-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const m = btn.dataset.mode;
+      if (m === getMode()) return;
+      setMode(m);
+      document.dispatchEvent(new CustomEvent('mode-changed'));
+    });
+  });
 }
 
 /* ---- Gap banner + backfill toast ---- */

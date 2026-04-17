@@ -1446,6 +1446,245 @@ input[type="date"] {
   to   { transform: translateY(0); opacity: 1; }
 }
 
+/* ---- Mode toggle (Visa / Tax) ---------------------------------------- */
+
+.mode-toggle {
+  display: inline-flex;
+  padding: 4px;
+  border-radius: var(--r-pill);
+  background: var(--card-inset);
+  border: 0.5px solid var(--border);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  margin-bottom: 20px;
+  position: relative;
+}
+.mode-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  border-radius: var(--r-pill);
+  cursor: pointer;
+  font-family: inherit;
+  transition: color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
+}
+.mode-btn:hover { color: var(--text); }
+.mode-btn.active {
+  color: white;
+  background: linear-gradient(180deg, var(--accent), color-mix(in srgb, var(--accent) 85%, black 15%));
+  box-shadow: 0 2px 10px var(--accent-glow), inset 0 1px 0 rgba(255,255,255,0.18);
+}
+.mode-btn svg { stroke-width: 2; }
+.mode-beta {
+  font-size: 8px;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.22);
+  color: white;
+  letter-spacing: 0.08em;
+  margin-left: 2px;
+}
+.mode-btn:not(.active) .mode-beta {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* ---- Tax year navigator ---------------------------------------------- */
+
+.tax-year-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 6px;
+  margin-bottom: 14px;
+}
+.tax-year-label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.tax-year-title {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+.tax-year-sub {
+  font-size: 10px;
+  color: var(--text-tertiary);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+
+/* ---- Tax card (minimize-goal countries) ------------------------------ */
+
+.tax-card {
+  position: relative;
+  background: var(--card);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  border-radius: var(--r-lg);
+  border: 0.5px solid var(--border);
+  box-shadow: var(--shadow-sm);
+  padding: 16px 16px 14px;
+  margin-bottom: 10px;
+  cursor: pointer;
+  transition: transform var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
+  overflow: hidden;
+}
+.tax-card:hover { background: var(--card-hover); }
+.tax-card:active { transform: scale(0.99); }
+
+.tax-card.urgency-caution { border-color: rgba(245,196,0,0.28); }
+.tax-card.urgency-warning { border-color: rgba(255,149,0,0.32); }
+.tax-card.urgency-critical { border-color: rgba(255,59,48,0.38); }
+.tax-card.urgency-expired { border-color: rgba(255,59,48,0.55); }
+.tax-card.urgency-expired::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: var(--wash-critical);
+  pointer-events: none;
+}
+
+.tax-card-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  position: relative;
+}
+.tax-card-emoji {
+  font-size: 28px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.tax-card-info { flex: 1; min-width: 0; }
+.tax-card-name {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.tax-card-sub {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+.tax-card-count {
+  text-align: right;
+  flex-shrink: 0;
+  margin-right: 4px;
+}
+.tax-card-num {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+.tax-card-of {
+  font-size: 10px;
+  color: var(--text-tertiary);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+
+.tax-progress {
+  position: relative;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--divider);
+  margin-top: 12px;
+  overflow: visible; /* let soft-threshold ticks extend above */
+}
+.tax-progress-fill {
+  height: 100%;
+  border-radius: 4px;
+  transform-origin: left center;
+  animation: growX var(--dur-slow) var(--ease) both;
+}
+.tax-progress-fill.urgency-safe { background: linear-gradient(90deg, var(--green), var(--green-2)); }
+.tax-progress-fill.urgency-caution { background: linear-gradient(90deg, var(--yellow), var(--yellow-2)); }
+.tax-progress-fill.urgency-warning { background: linear-gradient(90deg, var(--orange), var(--orange-2)); }
+.tax-progress-fill.urgency-critical,
+.tax-progress-fill.urgency-expired { background: linear-gradient(90deg, var(--red), var(--red-2)); }
+
+/* Soft threshold tick marks on progress bars */
+.tax-tick {
+  position: absolute;
+  top: -3px;
+  width: 2px;
+  height: 14px;
+  border-radius: 1px;
+  background: var(--text-quaternary);
+  transform: translateX(-50%);
+}
+.tax-tick.primary { background: var(--text-tertiary); height: 16px; top: -4px; }
+.tax-tick.ties { background: rgba(255,159,10,0.7); }
+.tax-tick.safe { background: rgba(48,199,89,0.7); }
+.tax-tick.alt { background: var(--accent); }
+
+.tax-card-label {
+  font-size: 12px;
+  font-weight: 600;
+  margin-top: 8px;
+  letter-spacing: -0.01em;
+}
+
+/* Tax hero card tweaks */
+.hero-card.tax-hero { padding-top: 28px; }
+.hero-card.tax-hero .hero-progress { overflow: visible; }
+
+/* Tax soft-threshold list in detail view */
+.tax-soft-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 0.5px solid var(--divider);
+}
+.tax-soft-row:last-of-type { border-bottom: none; }
+.tax-soft-row.hit { opacity: 0.9; }
+.tax-soft-days {
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  min-width: 44px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.tax-soft-row.hit .tax-soft-days { color: var(--red); }
+.tax-soft-body { flex: 1; min-width: 0; }
+.tax-soft-title { font-size: 13px; font-weight: 500; line-height: 1.35; }
+.tax-soft-icon { flex-shrink: 0; display: inline-flex; }
+
+/* Tax disclaimer */
+.tax-disclaimer {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin: 20px 2px 12px;
+  padding: 14px;
+  border-radius: var(--r-md);
+  background: var(--card-inset);
+  border: 0.5px solid var(--border);
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+.tax-disclaimer-icon { font-size: 18px; flex-shrink: 0; }
+.tax-disclaimer strong { color: var(--text); font-weight: 700; }
+
 /* Reduce motion preferences */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

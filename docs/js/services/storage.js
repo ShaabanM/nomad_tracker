@@ -7,6 +7,7 @@ const CITIZENSHIP_KEY = 'nomad_citizenship';
 const LAST_SEEN_KEY = 'nomad_last_seen';
 const GAP_REVIEWED_KEY = 'nomad_gap_reviewed_through'; // last date through which gaps have been acknowledged
 const OVERRIDE_LOCATION_KEY = 'nomad_override_location'; // manual location override
+const MODE_KEY = 'nomad_mode'; // 'visa' | 'tax'
 
 // Date helpers — all dates stored as YYYY-MM-DD strings
 export function toDateStr(date) {
@@ -162,14 +163,18 @@ export function smartBackfill(currentLocation) {
   };
 
   const currentJ = currentLocation?.jurisdiction;
+  // Trackable: a jurisdiction we count for visa purposes (for gap backfill decisions).
   const isTrackable = !!(currentJ && !currentJ.visaRequired && !currentJ.homeCountry && !currentJ.unrestricted);
+  // Loggable: any jurisdiction we want to record presence in (for tax tracking).
+  // Includes home country so tax engine can count days there. Excludes visa-required (you can't be there).
+  const isLoggable = !!(currentJ && !currentJ.visaRequired);
 
   const today = todayStr();
   const gap = computeGap();
   result.gap = gap;
 
   // Log today first (so it exists before we start computing gap fills off it)
-  if (isTrackable) {
+  if (isLoggable) {
     const code = [...currentJ.countryCodes][0] || currentLocation.countryCode;
     const rec = makeRecord(new Date(), code, currentJ.id, 'gps');
     if (addRecord(rec)) result.todayLogged = true;
@@ -276,6 +281,17 @@ export function getCitizenship() {
 
 export function setCitizenship(code) {
   localStorage.setItem(CITIZENSHIP_KEY, code);
+}
+
+// Mode: 'visa' (default) or 'tax'
+export function getMode() {
+  const v = localStorage.getItem(MODE_KEY);
+  return v === 'tax' ? 'tax' : 'visa';
+}
+
+export function setMode(mode) {
+  if (mode !== 'visa' && mode !== 'tax') return;
+  localStorage.setItem(MODE_KEY, mode);
 }
 
 // --- Data export/import ---

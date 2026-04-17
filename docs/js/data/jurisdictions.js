@@ -306,6 +306,21 @@ export const ALL_JURISDICTIONS = [
     ],
     countryCodes: new Set(['AE']),
   },
+  {
+    id: 'canada',
+    name: 'Canada',
+    emoji: '\u{1F1E8}\u{1F1E6}',
+    ruleType: RULE_TYPES.PER_VISIT,
+    maxDays: 180,
+    notes: [
+      'Canadians have no limit in their home country. Tracked here for tax residency purposes.',
+      'Visiting non-citizens typically get 6 months per visit.',
+    ],
+    tips: [
+      'For Canadians spending significant time abroad, tracking Canada days matters for CRA residency rules.',
+    ],
+    countryCodes: new Set(['CA']),
+  },
 ];
 
 // Lookup helpers

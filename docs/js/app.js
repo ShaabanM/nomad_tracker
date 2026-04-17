@@ -21,6 +21,7 @@ let currentLocation = null;
 let activeTab = 'dashboard';
 let pendingGap = null; // { gapDays, gapStart, gapEndExclusive, lastRecord, currentJurisdictionId }
 let lastBackfillResult = null;
+let taxDisplayYear = new Date().getFullYear();
 
 // Boot
 async function init() {
@@ -98,7 +99,7 @@ function renderActiveTab() {
     btn.classList.toggle('active', btn.dataset.tab === activeTab);
   });
 
-  const extras = { pendingGap, lastBackfillResult };
+  const extras = { pendingGap, lastBackfillResult, taxDisplayYear };
 
   switch (activeTab) {
     case 'dashboard':
@@ -174,6 +175,17 @@ function wireEvents() {
     showGapReview(pendingGap, currentLocation, () => {
       document.dispatchEvent(new CustomEvent('data-changed'));
     });
+  });
+
+  // Mode switch (visa <-> tax)
+  document.addEventListener('mode-changed', () => {
+    renderActiveTab();
+  });
+
+  // Tax year navigation
+  document.addEventListener('tax-year-change', (e) => {
+    taxDisplayYear = e.detail.displayYear;
+    renderActiveTab();
   });
 
   // Location override changed

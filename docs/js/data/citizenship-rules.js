@@ -12,7 +12,10 @@ export const CITIZENSHIPS = [
 // Per-citizenship rule overrides. CA = {} because base data IS Canadian rules.
 // Each override can contain: visaRequired, homeCountry, unrestricted, ruleType, maxDays, windowDays, notes, tips, visaInfo
 const CITIZENSHIP_OVERRIDES = {
-  CA: {}, // Base jurisdictions.js data is already Canadian
+  CA: {
+    // Base jurisdictions.js data is already Canadian. Canada itself is home country.
+    canada: { homeCountry: true },
+  },
 
   MX: {
     // 14/15 visa-free. Turkey requires eVisa, Mexico is home country.
@@ -139,6 +142,12 @@ const CITIZENSHIP_OVERRIDES = {
         'Free of charge at port of entry.',
       ],
     },
+    canada: {
+      ruleType: RULE_TYPES.PER_VISIT, maxDays: 180,
+      notes: [
+        'Mexicans typically need an eTA (electronic travel authorization) for visa-free entry, up to 6 months per visit.',
+      ],
+    },
   },
 
   SA: {
@@ -244,6 +253,10 @@ const CITIZENSHIP_OVERRIDES = {
       tips: [
         'As a GCC national, you have full freedom of movement in the UAE.',
       ],
+    },
+    canada: {
+      visaRequired: true,
+      visaInfo: 'Visa required. Apply at Canadian embassy/consulate.',
     },
   },
 };

@@ -195,7 +195,7 @@ function wireEvents() {
 
 function showStaleBanner() {
   const banner = document.createElement('div');
-  banner.style.cssText = 'position:fixed;top:0;left:0;right:0;background:var(--orange);color:white;text-align:center;padding:calc(var(--safe-top) + 4px) 16px 8px;font-size:13px;font-weight:500;z-index:150;cursor:pointer';
+  banner.className = 'app-banner stale';
   banner.textContent = 'Location data is stale. Tap to refresh.';
   banner.addEventListener('click', () => {
     banner.remove();
@@ -226,7 +226,7 @@ function showUpdateBanner() {
   if (document.getElementById('update-banner')) return;
   const banner = document.createElement('div');
   banner.id = 'update-banner';
-  banner.style.cssText = 'position:fixed;top:0;left:0;right:0;background:var(--accent);color:white;text-align:center;padding:calc(var(--safe-top) + 6px) 16px 8px;font-size:13px;font-weight:500;z-index:160;cursor:pointer';
+  banner.className = 'app-banner update';
   banner.textContent = 'A new version is available. Tap to update.';
   banner.addEventListener('click', () => {
     location.reload();

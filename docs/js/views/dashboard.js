@@ -1,4 +1,4 @@
-// Dashboard tab rendering
+// Dashboard tab rendering (Atlas design system)
 import { countryFlag, ruleLabel, ruleDescription } from '../data/jurisdictions.js';
 import { getJurisdictionsForCitizenship, findJurisdictionForCitizenship } from '../data/citizenship-rules.js';
 import * as rules from '../services/rules-engine.js';
@@ -12,11 +12,9 @@ export function renderDashboard(location, onCardClick, extras = {}) {
 
   let html = '';
 
-  // Update available notification handled in app.js
-
   // Gap review banner (if unresolved ambiguous gap)
   if (pendingGap) {
-    html += renderGapBanner(pendingGap, location);
+    html += renderGapBanner(pendingGap);
   }
 
   // Inline "filled N days automatically" toast if we just did a silent backfill
@@ -24,7 +22,7 @@ export function renderDashboard(location, onCardClick, extras = {}) {
     html += renderBackfillToast(lastBackfillResult);
   }
 
-  // Location header
+  // Location hero
   html += renderLocationHeader(location);
 
   // Active jurisdictions
@@ -95,40 +93,49 @@ export function renderDashboard(location, onCardClick, extras = {}) {
   }
 }
 
-function renderGapBanner(gap, location) {
-  const gapStart = gap.gapStart;
+/* ---- Gap banner + backfill toast ---- */
+
+function renderGapBanner(gap) {
   const lastDate = gap.lastRecord?.date || '?';
-  return `<div class="card" id="gap-review-btn" style="background:var(--yellow);color:#1c1c1e;cursor:pointer;display:flex;align-items:center;gap:12px;padding:14px 16px">
-    <div style="font-size:24px">\u{1F5D3}\uFE0F</div>
-    <div style="flex:1">
-      <div style="font-size:14px;font-weight:600">${gap.gapDays} unlogged day${gap.gapDays === 1 ? '' : 's'}</div>
-      <div style="font-size:12px;opacity:0.75">Since ${formatDate(lastDate)}. Tap to review where you were.</div>
+  return `<div class="gap-banner" id="gap-review-btn">
+    <div class="gap-banner-icon">
+      <svg width="20" height="20"><use href="#icon-calendar-cross"/></svg>
     </div>
-    <div style="font-size:18px;font-weight:300">\u203A</div>
+    <div class="gap-banner-text">
+      <div class="gap-banner-title">${gap.gapDays} unlogged day${gap.gapDays === 1 ? '' : 's'}</div>
+      <div class="gap-banner-desc">Since ${formatDate(lastDate)} · tap to review</div>
+    </div>
+    <div class="gap-banner-chevron"><svg width="16" height="16"><use href="#icon-chevron-right"/></svg></div>
   </div>`;
 }
 
 function renderBackfillToast(result) {
   const d = result.filled;
-  return `<div class="card" style="background:rgba(52,199,89,0.12);border-color:rgba(52,199,89,0.3);padding:10px 14px;display:flex;align-items:center;gap:10px">
-    <div style="font-size:16px">\u2728</div>
-    <div style="flex:1;font-size:13px;color:var(--text-secondary)">Auto-logged <strong style="color:var(--text)">${d}</strong> missed day${d === 1 ? '' : 's'} based on your location.</div>
+  return `<div class="toast">
+    <div class="toast-icon"><svg width="14" height="14"><use href="#icon-sparkle"/></svg></div>
+    <div>Auto-logged <strong>${d}</strong> missed day${d === 1 ? '' : 's'} based on your location.</div>
   </div>`;
 }
+
+/* ---- Location hero ---- */
 
 function renderLocationHeader(location) {
   const override = getLocationOverride();
 
   if (!location) {
-    return `<div class="card">
+    return `<div class="card location-card">
       <div class="location-header">
         <div class="location-flag">\u{1F4CD}</div>
         <div class="location-info">
-          <div class="location-city">Detecting location...</div>
-          <div class="location-jurisdiction">Tap refresh to try again</div>
+          <div class="location-city">Detecting location…</div>
+          <div class="location-jurisdiction">Tap refresh or set manually</div>
         </div>
-        <button class="refresh-btn" title="Refresh location">\u{21BB}</button>
-        <button class="override-btn" title="Set location manually" style="background:none;border:none;color:var(--accent);font-size:13px;padding:8px;cursor:pointer">Set</button>
+        <button class="icon-btn refresh-btn" title="Refresh location" aria-label="Refresh">
+          <svg><use href="#icon-refresh"/></svg>
+        </button>
+        <button class="icon-btn override-btn accent" title="Set location manually" aria-label="Set location manually">
+          <svg><use href="#icon-edit"/></svg>
+        </button>
       </div>
     </div>`;
   }
@@ -139,25 +146,31 @@ function renderLocationHeader(location) {
     : escapeHtml(location.country);
   const jurisdictionName = location.jurisdiction?.name || 'Not a tracked jurisdiction';
 
-  const sourceLabel = override ? 'manual' : (location.cached ? 'cached' : 'live');
-  const dotClass = override ? '' : (location.cached ? 'stale' : '');
+  const statusClass = override ? 'manual' : (location.cached ? 'cached' : '');
+  const statusLabel = override ? 'Manual' : (location.cached ? 'Cached' : 'Live');
 
-  return `<div class="card">
+  return `<div class="card location-card">
     <div class="location-header">
       <div class="location-flag">${flag}</div>
       <div class="location-info">
         <div class="location-city">${cityCountry}</div>
         <div class="location-jurisdiction">${escapeHtml(jurisdictionName)}</div>
       </div>
-      <div class="location-status">
-        <div class="location-dot ${dotClass}"></div>
-        <div class="location-time">${sourceLabel}</div>
+      <div class="location-status ${statusClass}">
+        <span class="location-dot"></span>
+        <span>${statusLabel}</span>
       </div>
-      <button class="refresh-btn" title="Refresh location">\u{21BB}</button>
-      <button class="override-btn" title="Set location manually" style="background:none;border:none;color:var(--accent);font-size:13px;padding:6px 4px;cursor:pointer;margin-left:4px">\u270F\uFE0F</button>
+      <button class="icon-btn refresh-btn" title="Refresh location" aria-label="Refresh">
+        <svg><use href="#icon-refresh"/></svg>
+      </button>
+      <button class="icon-btn override-btn accent" title="Set location manually" aria-label="Set location manually">
+        <svg><use href="#icon-edit"/></svg>
+      </button>
     </div>
   </div>`;
 }
+
+/* ---- Sorting + active jurisdictions ---- */
 
 function getActiveJurisdictions(location, records, today) {
   const jurisdictions = getJurisdictionsForCitizenship(getCitizenship());
@@ -168,11 +181,9 @@ function getActiveJurisdictions(location, records, today) {
     active.unshift(location.jurisdiction);
   }
 
-  // Sort: current first, then by days used descending
   active.sort((a, b) => {
     if (a.id === location?.jurisdiction?.id) return -1;
     if (b.id === location?.jurisdiction?.id) return 1;
-    // Visa-required and special jurisdictions sort to the end
     if (a.visaRequired !== b.visaRequired) return a.visaRequired ? 1 : -1;
     if (a.homeCountry !== b.homeCountry) return a.homeCountry ? 1 : -1;
     if (a.unrestricted !== b.unrestricted) return a.unrestricted ? 1 : -1;
@@ -182,47 +193,18 @@ function getActiveJurisdictions(location, records, today) {
   return active;
 }
 
+/* ---- Jurisdiction cards ---- */
+
 function renderJurisdictionCard(jurisdiction, records, today, isActive) {
-  // Visa-required card
+  // Visa-required card (special status)
   if (jurisdiction.visaRequired) {
-    return `<div class="card card-visa-required" data-jurisdiction="${jurisdiction.id}">
-      <div class="j-card-compact">
-        <span class="j-card-emoji">${jurisdiction.emoji}</span>
-        <div class="j-card-compact-info">
-          <div class="j-card-compact-name">${escapeHtml(jurisdiction.name)}</div>
-          <div class="j-card-compact-sub" style="color:var(--orange)">Visa required</div>
-        </div>
-        <span class="visa-badge">VISA</span>
-      </div>
-    </div>`;
+    return renderStatusCard(jurisdiction, 'VISA', 'visa-badge', 'Visa required', 'card-visa-required');
   }
-
-  // Home country card
   if (jurisdiction.homeCountry) {
-    return `<div class="card" data-jurisdiction="${jurisdiction.id}">
-      <div class="j-card-compact">
-        <span class="j-card-emoji">${jurisdiction.emoji}</span>
-        <div class="j-card-compact-info">
-          <div class="j-card-compact-name">${escapeHtml(jurisdiction.name)}</div>
-          <div class="j-card-compact-sub" style="color:var(--green)">Home country</div>
-        </div>
-        <span class="home-badge">HOME</span>
-      </div>
-    </div>`;
+    return renderStatusCard(jurisdiction, 'HOME', 'home-badge', 'Home country', '');
   }
-
-  // Unrestricted card
   if (jurisdiction.unrestricted) {
-    return `<div class="card" data-jurisdiction="${jurisdiction.id}">
-      <div class="j-card-compact">
-        <span class="j-card-emoji">${jurisdiction.emoji}</span>
-        <div class="j-card-compact-info">
-          <div class="j-card-compact-name">${escapeHtml(jurisdiction.name)}</div>
-          <div class="j-card-compact-sub" style="color:var(--green)">Unrestricted access</div>
-        </div>
-        <span class="home-badge">FREE</span>
-      </div>
-    </div>`;
+    return renderStatusCard(jurisdiction, 'FREE', 'home-badge', 'Unrestricted access', '');
   }
 
   const used = rules.daysUsed(jurisdiction, records, today);
@@ -231,78 +213,174 @@ function renderJurisdictionCard(jurisdiction, records, today, isActive) {
   const max = jurisdiction.maxDays;
 
   if (isActive) {
-    const leaveBy = used > 0 ? rules.mustLeaveBy(jurisdiction, records, today) : null;
-    const extra = rules.projectedExtraDays(jurisdiction, records, today);
-    const pct = Math.min(100, (used / max) * 100);
-
-    return `<div class="card card-active border-${urgency}" data-jurisdiction="${jurisdiction.id}">
-      <div class="j-card-expanded">
-        <div class="j-card-header">
-          <span class="j-card-emoji">${jurisdiction.emoji}</span>
-          <span class="j-card-name">${escapeHtml(jurisdiction.name)}</span>
-          <span class="active-badge bg-${urgency}">ACTIVE</span>
-        </div>
-        ${renderProgressRing(used, max, urgency, 110)}
-        <div class="j-card-stats">
-          <div class="j-card-remaining urgency-${urgency}">${remaining} days remaining</div>
-          <div class="j-card-rule">${ruleLabel(jurisdiction)}</div>
-          ${leaveBy ? `<div class="j-card-leave">Can stay until ${formatDate(leaveBy)}</div>` : ''}
-          ${extra > 0 ? `<div class="j-card-projected">${extra} older day${extra === 1 ? '' : 's'} should fall off while you stay</div>` : ''}
-        </div>
-        <div class="progress-bar" style="margin-top:12px">
-          <div class="progress-bar-fill" style="width:${pct}%;background:var(--${urgencyColor(urgency)})"></div>
-        </div>
-      </div>
-    </div>`;
+    return renderHeroCard(jurisdiction, records, today, used, remaining, urgency, max);
   }
 
-  // Compact card
-  return `<div class="card" data-jurisdiction="${jurisdiction.id}">
-    <div class="j-card-compact">
-      <span class="j-card-emoji">${jurisdiction.emoji}</span>
-      <div class="j-card-compact-info">
-        <div class="j-card-compact-name">${escapeHtml(jurisdiction.name)}</div>
-        <div class="j-card-compact-sub">${used}/${max} days \u2022 ${ruleLabel(jurisdiction)}</div>
+  // Compact row card
+  const pct = max > 0 ? Math.min(1, used / max) : 0;
+  return `<div class="j-card" data-jurisdiction="${jurisdiction.id}">
+    <div class="j-card-ring">${renderMiniRing(pct, urgency, 42)}</div>
+    <div class="j-card-body">
+      <div class="j-card-name">${jurisdiction.emoji} ${escapeHtml(jurisdiction.name)}</div>
+      <div class="j-card-sub">${used}/${max} days · ${ruleLabel(jurisdiction)}</div>
+    </div>
+    <div class="j-card-count">
+      <div class="j-card-count-num urgency-${urgency}">${remaining}</div>
+      <div class="j-card-count-label">left</div>
+    </div>
+    <span class="j-card-chevron"><svg width="14" height="14"><use href="#icon-chevron-right"/></svg></span>
+  </div>`;
+}
+
+function renderStatusCard(j, label, badgeClass, subLine, extraClass) {
+  return `<div class="j-card ${extraClass}" data-jurisdiction="${j.id}">
+    <div class="j-card-emoji">${j.emoji}</div>
+    <div class="j-card-body">
+      <div class="j-card-name">${escapeHtml(j.name)}</div>
+      <div class="j-card-sub">${escapeHtml(subLine)}</div>
+    </div>
+    <span class="${badgeClass}">${label}</span>
+    <span class="j-card-chevron"><svg width="14" height="14"><use href="#icon-chevron-right"/></svg></span>
+  </div>`;
+}
+
+function renderHeroCard(j, records, today, used, remaining, urgency, max) {
+  const leaveBy = used > 0 ? rules.mustLeaveBy(j, records, today) : null;
+  const extra = rules.projectedExtraDays(j, records, today);
+  const pct = Math.min(100, (used / max) * 100);
+
+  return `<div class="hero-card urgency-${urgency}" data-jurisdiction="${j.id}">
+    <div class="hero-flag-watermark">${j.emoji}</div>
+
+    <div class="hero-row">
+      <span class="hero-emoji">${j.emoji}</span>
+      <span class="hero-name">${escapeHtml(j.name)}</span>
+      <span class="pill ${urgency}">Active</span>
+    </div>
+
+    <div class="hero-ring-wrap">
+      ${renderProgressRing(used, max, urgency, 156)}
+    </div>
+
+    <div class="hero-stats">
+      <div class="hero-big">
+        <span class="urgency-${urgency}">${remaining}</span>
+        <span style="color:var(--text-secondary);font-weight:600;font-size:13px;margin-left:6px">days remaining</span>
       </div>
-      <span class="j-card-compact-count urgency-${urgency}">${remaining}</span>
-      <span class="j-card-compact-left">left</span>
+      <div class="hero-rule">${ruleLabel(j)} · ${used} of ${max} used</div>
+      ${leaveBy ? `<div class="hero-chip">
+        <svg width="12" height="12" style="opacity:0.7"><use href="#icon-calendar"/></svg>
+        Can stay until ${formatDate(leaveBy)}
+      </div>` : ''}
+      ${extra > 0 ? `<div style="font-size:11px;color:var(--text-tertiary);margin-top:8px">+${extra} older day${extra === 1 ? '' : 's'} fall off while you stay</div>` : ''}
+    </div>
+
+    <div class="hero-progress">
+      <div class="hero-progress-fill urgency-${urgency}" style="width:${pct}%"></div>
     </div>
   </div>`;
 }
 
+/* ---- Progress Ring (gradient stroke + end dot + soft glow) ---- */
+
 export function renderProgressRing(used, total, urgency, size) {
-  const r = size * 0.38;
+  const r = size * 0.40;
   const circumference = 2 * Math.PI * r;
   const pct = total > 0 ? Math.min(1, used / total) : 0;
   const offset = circumference * (1 - pct);
-  const color = `var(--${urgencyColor(urgency)})`;
-  const trackOpacity = 'var(--ring-track)';
-  const strokeWidth = size * 0.12;
+  const strokeWidth = size * 0.095;
   const center = size / 2;
-  const textSize = size * 0.28;
-  const subSize = size * 0.12;
+  const textSize = size * 0.32;
+  const subSize = size * 0.10;
 
-  return `<svg class="progress-ring" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+  const gid = `ring-grad-${urgency}-${size}`;
+  const [c1, c2] = gradientStops(urgency);
+  const glow = glowColor(urgency);
+
+  // Endpoint dot position (at current progress)
+  const angle = -Math.PI / 2 + 2 * Math.PI * pct;
+  const dotX = center + r * Math.cos(angle);
+  const dotY = center + r * Math.sin(angle);
+  const dotR = strokeWidth * 0.55;
+
+  // Animation initial (fully undrawn)
+  const cssVars = `--ring-glow:${glow};--ring-initial:${circumference};`;
+
+  return `<svg class="progress-ring" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="${cssVars}">
+    <defs>
+      <linearGradient id="${gid}" gradientTransform="rotate(90)">
+        <stop offset="0%" stop-color="${c1}"/>
+        <stop offset="100%" stop-color="${c2}"/>
+      </linearGradient>
+    </defs>
     <circle class="progress-ring-track" cx="${center}" cy="${center}" r="${r}"
-      stroke="${color}" stroke-opacity="${trackOpacity}" stroke-width="${strokeWidth}" />
+      stroke="${c1}" stroke-opacity="var(--ring-track)" stroke-width="${strokeWidth}" />
     <circle class="progress-ring-fill" cx="${center}" cy="${center}" r="${r}"
-      stroke="${color}" stroke-width="${strokeWidth}"
+      stroke="url(#${gid})" stroke-width="${strokeWidth}"
       stroke-dasharray="${circumference}" stroke-dashoffset="${offset}"
       transform="rotate(-90 ${center} ${center})" />
-    <text class="progress-ring-text" x="${center}" y="${center - 4}" text-anchor="middle"
+    ${pct > 0.001 && pct < 0.999 ? `<circle class="progress-ring-dot" cx="${dotX}" cy="${dotY}" r="${dotR}" style="color:${c2}" />` : ''}
+    <text class="progress-ring-text" x="${center}" y="${center - 2}" text-anchor="middle" dominant-baseline="middle"
       font-size="${textSize}">${used}</text>
-    <text class="progress-ring-sub" x="${center}" y="${center + subSize + 2}" text-anchor="middle"
-      font-size="${subSize}">of ${total}</text>
+    <text class="progress-ring-sub" x="${center}" y="${center + subSize + 10}" text-anchor="middle"
+      font-size="${subSize}">OF ${total}</text>
   </svg>`;
 }
+
+function renderMiniRing(pct, urgency, size) {
+  const r = size * 0.38;
+  const circumference = 2 * Math.PI * r;
+  const offset = circumference * (1 - pct);
+  const strokeWidth = size * 0.14;
+  const center = size / 2;
+  const gid = `miniring-${urgency}-${Math.random().toString(36).slice(2,7)}`;
+  const [c1, c2] = gradientStops(urgency);
+
+  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+    <defs>
+      <linearGradient id="${gid}" gradientTransform="rotate(90)">
+        <stop offset="0%" stop-color="${c1}"/>
+        <stop offset="100%" stop-color="${c2}"/>
+      </linearGradient>
+    </defs>
+    <circle cx="${center}" cy="${center}" r="${r}" fill="none" stroke="${c1}" stroke-opacity="0.14" stroke-width="${strokeWidth}" />
+    <circle cx="${center}" cy="${center}" r="${r}" fill="none" stroke="url(#${gid})" stroke-width="${strokeWidth}"
+      stroke-linecap="round" stroke-dasharray="${circumference}" stroke-dashoffset="${offset}"
+      transform="rotate(-90 ${center} ${center})" />
+  </svg>`;
+}
+
+function gradientStops(urgency) {
+  switch (urgency) {
+    case 'safe': return ['#30C759', '#5FE380'];
+    case 'caution': return ['#F5C400', '#FFE066'];
+    case 'warning': return ['#FF9500', '#FFBE5A'];
+    case 'critical':
+    case 'expired': return ['#FF3B30', '#FF7A70'];
+    default: return ['#4D6BFF', '#7A95FF'];
+  }
+}
+
+function glowColor(urgency) {
+  switch (urgency) {
+    case 'safe': return 'rgba(48,199,89,0.40)';
+    case 'caution': return 'rgba(245,196,0,0.40)';
+    case 'warning': return 'rgba(255,149,0,0.40)';
+    case 'critical':
+    case 'expired': return 'rgba(255,59,48,0.45)';
+    default: return 'rgba(77,107,255,0.40)';
+  }
+}
+
+/* ---- Tips panel ---- */
 
 function renderTipsPanel(currentJurisdiction, records, today) {
   const tips = generateTipsInline(currentJurisdiction, records, today);
   if (tips.length === 0) return '';
 
   const rows = tips.slice(0, 5).map(t => `
-    <div class="tip-row">
-      <div class="tip-icon">${tipIcon(t.icon, t.priority)}</div>
+    <div class="tip priority-${t.priority}">
+      <div class="tip-icon">${tipIconEmoji(t.icon)}</div>
       <div class="tip-content">
         <div class="tip-title">${escapeHtml(t.title)}</div>
         <div class="tip-message">${escapeHtml(t.message)}</div>
@@ -310,11 +388,11 @@ function renderTipsPanel(currentJurisdiction, records, today) {
     </div>
   `).join('');
 
-  return `<div class="card">
+  return `<div class="tips-wrap">
     <button class="tips-header">
-      <span class="tips-header-icon">\u{1F4A1}</span>
+      <span class="tips-header-icon"><svg width="13" height="13"><use href="#icon-sparkle"/></svg></span>
       <span class="tips-header-text">Tips & Suggestions</span>
-      <span class="tips-chevron">\u25BC</span>
+      <span class="tips-chevron"><svg width="14" height="14"><use href="#icon-chevron-down"/></svg></span>
     </button>
     <div class="tips-list">${rows}</div>
   </div>`;
@@ -334,28 +412,27 @@ function generateTipsInline(currentJurisdiction, records, today) {
       const leaveDate = formatDate(leaveBy);
 
       if (remaining <= 7) {
-        tips.push({ icon: 'exclamation-triangle-fill', title: `Leave ${currentJurisdiction.name} by ${leaveDate}`, message: `Only ${remaining} day${remaining === 1 ? '' : 's'} remaining! Book your departure now.`, priority: 'critical', category: 'deadline' });
+        tips.push({ icon: 'alert', title: `Leave ${currentJurisdiction.name} by ${leaveDate}`, message: `Only ${remaining} day${remaining === 1 ? '' : 's'} remaining. Book your departure now.`, priority: 'critical' });
       } else if (remaining <= 14) {
-        tips.push({ icon: 'exclamation-triangle', title: `${remaining} days remaining in ${currentJurisdiction.name}`, message: `Start planning your departure. Must leave by ${leaveDate}.`, priority: 'high', category: 'deadline' });
+        tips.push({ icon: 'alert', title: `${remaining} days remaining in ${currentJurisdiction.name}`, message: `Start planning your departure. Must leave by ${leaveDate}.`, priority: 'high' });
       } else if (remaining <= 30) {
-        tips.push({ icon: 'clock', title: `${remaining} days remaining`, message: `Can stay until ${leaveDate} if you remain continuously.`, priority: 'medium', category: 'deadline' });
+        tips.push({ icon: 'clock', title: `${remaining} days remaining`, message: `Can stay until ${leaveDate} if you remain continuously.`, priority: 'medium' });
       } else {
-        tips.push({ icon: 'check-circle', title: `Comfortable in ${currentJurisdiction.name}`, message: `${remaining} of ${max} days remaining. Can stay until ${leaveDate}.`, priority: 'low', category: 'status' });
+        tips.push({ icon: 'check', title: `Comfortable in ${currentJurisdiction.name}`, message: `${remaining} of ${max} days remaining. Can stay until ${leaveDate}.`, priority: 'low' });
       }
     }
 
     const fallOff = rules.nextDayFallsOff(currentJurisdiction, records, today);
     if (fallOff) {
-      tips.push({ icon: 'arrow-counterclockwise', title: 'Days falling off the window', message: `${fallOff.count} day${fallOff.count === 1 ? '' : 's'} will fall off on ${formatDate(fallOff.date)}, giving you more allowance.`, priority: 'low', category: 'info' });
+      tips.push({ icon: 'refresh', title: 'Days falling off the window', message: `${fallOff.count} day${fallOff.count === 1 ? '' : 's'} will fall off on ${formatDate(fallOff.date)}, giving you more allowance.`, priority: 'low' });
     }
 
     if (currentJurisdiction.ruleType === 'calendarYear') {
       const resetDate = rules.calendarYearResetDate(today);
-      tips.push({ icon: 'calendar', title: `Counter resets ${formatDate(resetDate)}`, message: 'Calendar year system. Day count resets to 0 on January 1.', priority: 'low', category: 'info' });
+      tips.push({ icon: 'calendar', title: `Counter resets ${formatDate(resetDate)}`, message: 'Calendar year system. Day count resets to 0 on January 1.', priority: 'low' });
     }
   }
 
-  // Schengen exit suggestions (only if Schengen is visa-free for this citizenship)
   const citizenCode = getCitizenship();
   const schengenJ = findJurisdictionForCitizenship('schengen', citizenCode);
   if (currentJurisdiction?.id === 'schengen' && schengenJ && !schengenJ.visaRequired) {
@@ -376,23 +453,21 @@ function generateTipsInline(currentJurisdiction, records, today) {
         }
       }
       if (exitOptions.length > 0) {
-        tips.push({ icon: 'airplane', title: 'Plan your Schengen exit', message: `Consider: ${exitOptions.join(', ')}.`, priority: 'high', category: 'suggestion' });
+        tips.push({ icon: 'airplane', title: 'Plan your Schengen exit', message: `Consider: ${exitOptions.join(', ')}.`, priority: 'high' });
       }
     }
-    tips.push({ icon: 'info-circle', title: 'Schengen rolling window', message: "90/180 rule uses a rolling window. A 1-day trip outside doesn't meaningfully help.", priority: 'low', category: 'info' });
+    tips.push({ icon: 'info', title: 'Schengen rolling window', message: "90/180 rule uses a rolling window. A 1-day trip outside doesn't meaningfully help.", priority: 'low' });
   }
 
-  // Georgia promotion (only if visa-free for this citizenship)
   const georgiaJ = findJurisdictionForCitizenship('georgia', citizenCode);
   if (currentJurisdiction?.id !== 'georgia' && georgiaJ && !georgiaJ.visaRequired) {
     if (rules.daysUsed(georgiaJ, records, today) === 0) {
-      tips.push({ icon: 'star', title: `Georgia: ${georgiaJ.maxDays} days visa-free`, message: 'Perfect for a Schengen cooldown. Vibrant nomad community in Tbilisi.', priority: 'low', category: 'suggestion' });
+      tips.push({ icon: 'star', title: `Georgia: ${georgiaJ.maxDays} days visa-free`, message: 'Perfect for a Schengen cooldown. Vibrant nomad community in Tbilisi.', priority: 'low' });
     }
   }
 
-  // Montenegro registration
   if (currentJurisdiction?.id === 'montenegro') {
-    tips.push({ icon: 'building', title: 'Register within 24 hours', message: 'Register with police within 24hrs. Hotels do it automatically. For Airbnbs, you must do it yourself.', priority: 'high', category: 'action' });
+    tips.push({ icon: 'building', title: 'Register within 24 hours', message: 'Register with police within 24hrs. Hotels do it automatically. For Airbnbs, you must do it yourself.', priority: 'high' });
   }
 
   const priorityOrder = { critical: 3, high: 2, medium: 1, low: 0 };
@@ -400,29 +475,22 @@ function generateTipsInline(currentJurisdiction, records, today) {
   return tips;
 }
 
-function tipIcon(icon, priority) {
-  const colors = { critical: 'var(--red)', high: 'var(--orange)', medium: 'var(--yellow)', low: 'var(--accent)' };
-  const color = colors[priority] || 'var(--accent)';
-  const symbols = {
-    'exclamation-triangle-fill': '\u26A0\uFE0F',
-    'exclamation-triangle': '\u26A0',
-    'clock': '\u{1F552}',
-    'check-circle': '\u2705',
-    'arrow-counterclockwise': '\u{1F504}',
-    'calendar': '\u{1F4C5}',
-    'airplane': '\u2708\uFE0F',
-    'info-circle': '\u2139\uFE0F',
-    'star': '\u2B50',
-    'building': '\u{1F3DB}\uFE0F',
-    'exclamation-circle': '\u2757',
+function tipIconEmoji(icon) {
+  const map = {
+    alert: '\u26A0\uFE0F',
+    clock: '\u{1F552}',
+    check: '\u2705',
+    refresh: '\u{1F504}',
+    calendar: '\u{1F4C5}',
+    airplane: '\u2708\uFE0F',
+    info: '\u2139\uFE0F',
+    star: '\u2B50',
+    building: '\u{1F3DB}\uFE0F',
   };
-  return symbols[icon] || '\u{1F4A1}';
+  return map[icon] || '\u{1F4A1}';
 }
 
-function urgencyColor(urgency) {
-  const map = { safe: 'green', caution: 'yellow', warning: 'orange', critical: 'red', expired: 'red' };
-  return map[urgency] || 'green';
-}
+/* ---- helpers ---- */
 
 function formatDate(dateStr) {
   const [y, m, d] = dateStr.split('-').map(Number);

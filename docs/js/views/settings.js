@@ -1,4 +1,4 @@
-// Settings tab rendering
+// Settings tab rendering (Atlas design)
 import { ALL_JURISDICTIONS, countryFlag, ruleDescription } from '../data/jurisdictions.js';
 import { CITIZENSHIPS, getJurisdictionsForCitizenship } from '../data/citizenship-rules.js';
 import * as rules from '../services/rules-engine.js';
@@ -27,10 +27,9 @@ export function renderSettings(location, onJurisdictionClick) {
   const jurisdictions = getJurisdictionsForCitizenship(citizenshipCode);
   const override = getLocationOverride();
 
-  // Location status
   const locationStatus = location
     ? `<div class="settings-row">
-        <span class="settings-icon" style="color:var(--green)">📍</span>
+        <span class="settings-icon"><svg width="18" height="18" style="color:${override ? 'var(--accent)' : 'var(--green)'}"><use href="#icon-pin"/></svg></span>
         <span class="settings-label">${override ? 'Manual override active' : 'Location tracking active'}</span>
       </div>
       <div class="settings-row">
@@ -38,51 +37,50 @@ export function renderSettings(location, onJurisdictionClick) {
         <span class="settings-value">${location.countryCode ? countryFlag(location.countryCode) + ' ' + escapeHtml(location.country) : 'Unknown'}</span>
       </div>`
     : `<div class="settings-row">
-        <span class="settings-icon" style="color:var(--red)">❌</span>
+        <span class="settings-icon"><svg width="18" height="18" style="color:var(--red)"><use href="#icon-close"/></svg></span>
         <span class="settings-label">Location not available</span>
       </div>`;
 
-  // All jurisdictions — citizenship-aware
   let jurisdictionRows = '';
   for (const j of jurisdictions) {
     if (j.visaRequired) {
       jurisdictionRows += `
         <div class="settings-row clickable" data-jurisdiction="${j.id}">
-          <span class="settings-icon">${j.emoji}</span>
+          <span class="settings-icon" style="font-size:20px">${j.emoji}</span>
           <div class="flex-1">
-            <div style="font-size:15px">${escapeHtml(j.name)}</div>
+            <div style="font-size:15px;font-weight:500;letter-spacing:-0.01em">${escapeHtml(j.name)}</div>
             <div style="font-size:12px;color:var(--orange)">Visa required</div>
           </div>
-          <span class="visa-badge">VISA</span>
+          <span class="visa-badge">Visa</span>
         </div>`;
     } else if (j.homeCountry) {
       jurisdictionRows += `
         <div class="settings-row" data-jurisdiction="${j.id}">
-          <span class="settings-icon">${j.emoji}</span>
+          <span class="settings-icon" style="font-size:20px">${j.emoji}</span>
           <div class="flex-1">
-            <div style="font-size:15px">${escapeHtml(j.name)}</div>
+            <div style="font-size:15px;font-weight:500;letter-spacing:-0.01em">${escapeHtml(j.name)}</div>
             <div style="font-size:12px;color:var(--green)">Home country</div>
           </div>
-          <span class="home-badge">HOME</span>
+          <span class="home-badge">Home</span>
         </div>`;
     } else if (j.unrestricted) {
       jurisdictionRows += `
         <div class="settings-row clickable" data-jurisdiction="${j.id}">
-          <span class="settings-icon">${j.emoji}</span>
+          <span class="settings-icon" style="font-size:20px">${j.emoji}</span>
           <div class="flex-1">
-            <div style="font-size:15px">${escapeHtml(j.name)}</div>
+            <div style="font-size:15px;font-weight:500;letter-spacing:-0.01em">${escapeHtml(j.name)}</div>
             <div style="font-size:12px;color:var(--green)">Unrestricted access</div>
           </div>
-          <span class="home-badge">FREE</span>
+          <span class="home-badge">Free</span>
         </div>`;
     } else {
       const used = rules.daysUsed(j, records, today);
       const usedLabel = used > 0 ? `${used}/${j.maxDays}` : '';
       jurisdictionRows += `
         <div class="settings-row clickable" data-jurisdiction="${j.id}">
-          <span class="settings-icon">${j.emoji}</span>
+          <span class="settings-icon" style="font-size:20px">${j.emoji}</span>
           <div class="flex-1">
-            <div style="font-size:15px">${escapeHtml(j.name)}</div>
+            <div style="font-size:15px;font-weight:500;letter-spacing:-0.01em">${escapeHtml(j.name)}</div>
             <div style="font-size:12px;color:var(--text-secondary)">${ruleDescription(j)}</div>
           </div>
           ${usedLabel ? `<span class="settings-value">${usedLabel}</span>` : ''}
@@ -98,13 +96,13 @@ export function renderSettings(location, onJurisdictionClick) {
 
     <div class="section-title">Citizenship</div>
     <div class="card">
-      <div class="settings-row clickable" id="change-citizenship">
-        <span class="settings-icon" style="font-size:24px">${citizenship.emoji}</span>
+      <div class="settings-row clickable" id="change-citizenship" style="padding:6px 0">
+        <span class="settings-icon" style="font-size:28px">${citizenship.emoji}</span>
         <div class="flex-1">
-          <div style="font-size:15px;font-weight:600">${escapeHtml(citizenship.name)}</div>
+          <div style="font-size:16px;font-weight:700;letter-spacing:-0.01em">${escapeHtml(citizenship.name)}</div>
           <div style="font-size:12px;color:var(--text-secondary)">${visaFreeCount} visa-free jurisdictions</div>
         </div>
-        <span class="settings-value" style="font-size:13px">Change</span>
+        <span class="settings-value" style="font-size:13px;color:var(--accent);font-weight:500">Change</span>
         <span class="chevron-right"></span>
       </div>
     </div>
@@ -113,33 +111,44 @@ export function renderSettings(location, onJurisdictionClick) {
     <div class="card">
       ${locationStatus}
       <div class="settings-row clickable" id="override-row">
-        <span class="settings-icon">${override ? '\u270F\uFE0F' : '\u{1F5FA}\uFE0F'}</span>
+        <span class="settings-icon">${override
+          ? '<svg width="18" height="18" style="color:var(--accent)"><use href="#icon-edit"/></svg>'
+          : '<svg width="18" height="18" style="color:var(--text-secondary)"><use href="#icon-globe"/></svg>'}</span>
         <div class="flex-1">
-          <div style="font-size:15px">${override ? 'Change manual location' : 'Set location manually'}</div>
+          <div style="font-size:15px;font-weight:500">${override ? 'Change manual location' : 'Set location manually'}</div>
           <div style="font-size:12px;color:var(--text-secondary)">${override ? 'GPS is currently overridden' : 'Useful on desktop or when GPS is wrong'}</div>
         </div>
         <span class="chevron-right"></span>
       </div>
     </div>
 
-    <div class="section-title">Add Past Travel</div>
+    <div class="section-title">Add past travel</div>
     <div class="card">
-      <button class="btn btn-bordered" id="add-travel-btn">➕ Add days to a jurisdiction</button>
-      <div style="font-size:12px;color:var(--text-secondary);margin-top:8px">
-        Use this to enter days you've already spent in a jurisdiction before installing.
+      <button class="btn btn-bordered" id="add-travel-btn">
+        <svg width="16" height="16"><use href="#icon-plus"/></svg>
+        Add days to a jurisdiction
+      </button>
+      <div style="font-size:12px;color:var(--text-tertiary);margin-top:10px;line-height:1.45">
+        Enter days you already spent somewhere before installing.
       </div>
     </div>
 
-    <div class="section-title">All Jurisdictions</div>
-    <div class="card" style="padding:0 16px">${jurisdictionRows}</div>
+    <div class="section-title">All jurisdictions</div>
+    <div class="card settings-list">${jurisdictionRows}</div>
 
-    <div class="section-title">Backup & Restore</div>
+    <div class="section-title">Backup & restore</div>
     <div class="card">
-      <button class="btn btn-bordered" id="export-btn">\u2B07\uFE0F Export data (JSON)</button>
-      <button class="btn btn-bordered" id="import-btn" style="margin-top:8px">\u2B06\uFE0F Import data (JSON)</button>
+      <button class="btn btn-bordered" id="export-btn">
+        <svg width="16" height="16"><use href="#icon-download"/></svg>
+        Export backup
+      </button>
+      <button class="btn btn-bordered" id="import-btn" style="margin-top:8px">
+        <svg width="16" height="16"><use href="#icon-upload"/></svg>
+        Import backup
+      </button>
       <input type="file" id="import-file" accept="application/json,.json" style="display:none">
-      <div style="font-size:12px;color:var(--text-secondary);margin-top:8px">
-        Save a backup or move your records to another device. Imports merge by date + jurisdiction; duplicates are skipped.
+      <div style="font-size:12px;color:var(--text-tertiary);margin-top:10px;line-height:1.45">
+        Save a JSON backup or restore on another device. Imports merge by date + jurisdiction; duplicates are skipped.
       </div>
     </div>
 
@@ -155,34 +164,32 @@ export function renderSettings(location, onJurisdictionClick) {
       </div>
     </div>
 
-    <div class="section-title">Danger Zone</div>
+    <div class="section-title">Danger zone</div>
     <div class="card">
-      <button class="btn btn-destructive" id="clear-all-btn">🗑 Clear All Data</button>
+      <button class="btn btn-destructive" id="clear-all-btn">
+        <svg width="14" height="14"><use href="#icon-trash"/></svg>
+        Clear all data
+      </button>
     </div>`;
 
-  // Wire up citizenship change
   container.querySelector('#change-citizenship').addEventListener('click', () => {
     showCitizenshipModal(citizenshipCode, () => {
       renderSettings(location, onJurisdictionClick);
     });
   });
 
-  // Wire up jurisdiction clicks
   container.querySelectorAll('[data-jurisdiction]').forEach(el => {
     el.addEventListener('click', () => onJurisdictionClick(el.dataset.jurisdiction));
   });
 
-  // Wire up add travel button
   container.querySelector('#add-travel-btn').addEventListener('click', () => {
     showAddTravelModal();
   });
 
-  // Wire up override
   container.querySelector('#override-row').addEventListener('click', () => {
     showLocationOverride();
   });
 
-  // Export
   container.querySelector('#export-btn').addEventListener('click', () => {
     const blob = new Blob([JSON.stringify(exportData(), null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -195,7 +202,6 @@ export function renderSettings(location, onJurisdictionClick) {
     URL.revokeObjectURL(url);
   });
 
-  // Import
   const fileInput = container.querySelector('#import-file');
   container.querySelector('#import-btn').addEventListener('click', () => fileInput.click());
   fileInput.addEventListener('change', async () => {
@@ -215,7 +221,6 @@ export function renderSettings(location, onJurisdictionClick) {
     }
   });
 
-  // Wire up clear all
   container.querySelector('#clear-all-btn').addEventListener('click', () => {
     if (confirm('This will delete ALL recorded travel days across all jurisdictions. This cannot be undone.')) {
       clearAllRecords();
@@ -230,20 +235,20 @@ function showCitizenshipModal(currentCode, onSelect) {
   const options = CITIZENSHIPS.map(c =>
     `<label class="citizenship-option">
       <input type="radio" name="citizenship" value="${c.code}" ${c.code === currentCode ? 'checked' : ''}>
-      <span style="font-size:24px">${c.emoji}</span>
-      <span style="font-size:16px;font-weight:500">${escapeHtml(c.name)}</span>
+      <span>${c.emoji}</span>
+      <span>${escapeHtml(c.name)}</span>
     </label>`
   ).join('');
 
   modal.querySelector('.modal-sheet').innerHTML = `
     <div class="modal-handle"></div>
-    <div class="modal-title">Select Citizenship</div>
-    <div style="font-size:13px;color:var(--text-secondary);margin-bottom:16px">
-      Changing citizenship will update visa rules for all jurisdictions. Your travel records are not affected.
+    <div class="modal-title">Select citizenship</div>
+    <div class="modal-desc">
+      Changing citizenship updates visa rules across all jurisdictions. Your travel records are not affected.
     </div>
-    <div>${options}</div>
-    <button class="btn btn-primary" id="citizenship-confirm" style="margin-top:16px">Confirm</button>
-    <button class="btn btn-text" id="citizenship-cancel" style="margin-top:8px">Cancel</button>`;
+    <div class="citizenship-list">${options}</div>
+    <button class="btn btn-primary" id="citizenship-confirm" style="margin-top:18px">Confirm</button>
+    <button class="btn btn-text" id="citizenship-cancel" style="margin-top:4px">Cancel</button>`;
 
   modal.classList.add('open');
 
@@ -280,7 +285,7 @@ function showAddTravelModal() {
 
   modal.querySelector('.modal-sheet').innerHTML = `
     <div class="modal-handle"></div>
-    <div class="modal-title">Add Past Travel</div>
+    <div class="modal-title">Add past travel</div>
     <div class="form-group">
       <label class="form-label">Jurisdiction</label>
       <select class="form-select" id="modal-jurisdiction">${options}</select>
@@ -293,9 +298,9 @@ function showAddTravelModal() {
       <label class="form-label">To</label>
       <input type="date" class="form-input" id="modal-end" value="${today}" max="${today}">
     </div>
-    <div id="modal-preview" style="font-size:13px;color:var(--text-secondary);margin-bottom:16px"></div>
-    <button class="btn btn-primary" id="modal-add">Add Days</button>
-    <button class="btn btn-text" id="modal-cancel" style="margin-top:8px">Cancel</button>`;
+    <div id="modal-preview" style="font-size:13px;color:var(--text-secondary);margin:6px 2px 16px"></div>
+    <button class="btn btn-primary" id="modal-add">Add days</button>
+    <button class="btn btn-text" id="modal-cancel" style="margin-top:4px">Cancel</button>`;
 
   modal.classList.add('open');
 

@@ -1,4 +1,4 @@
-// Onboarding flow for first launch
+// Onboarding flow (Atlas design — gradient backgrounds, page dots)
 import { ALL_JURISDICTIONS } from '../data/jurisdictions.js';
 import { CITIZENSHIPS, getJurisdictionsForCitizenship } from '../data/citizenship-rules.js';
 import {
@@ -27,39 +27,33 @@ export function showOnboarding(onComplete) {
   ];
 
   function render() {
-    overlay.innerHTML = pages[currentPage](detectedLocation);
+    overlay.innerHTML = pages[currentPage](detectedLocation, currentPage, pages.length);
     wireUp();
   }
 
   function wireUp() {
-    // Next button
     const nextBtn = overlay.querySelector('#onboarding-next');
     if (nextBtn) {
       nextBtn.addEventListener('click', () => {
-        // Save citizenship on the citizenship page before advancing
         if (currentPage === 1) {
           const selected = overlay.querySelector('input[name="citizenship"]:checked');
-          if (selected) {
-            setCitizenship(selected.value);
-          }
+          if (selected) setCitizenship(selected.value);
         }
         currentPage++;
         render();
       });
     }
 
-    // Location enable
     const enableBtn = overlay.querySelector('#enable-location');
     if (enableBtn) {
       enableBtn.addEventListener('click', async () => {
-        enableBtn.textContent = 'Detecting...';
+        enableBtn.textContent = 'Detecting…';
         enableBtn.disabled = true;
         detectedLocation = await detectLocation();
         render();
       });
     }
 
-    // Get started
     const startBtn = overlay.querySelector('#get-started');
     if (startBtn) {
       startBtn.addEventListener('click', () => {
@@ -82,7 +76,6 @@ export function showOnboarding(onComplete) {
       });
     }
 
-    // Skip
     const skipBtn = overlay.querySelector('#onboarding-skip');
     if (skipBtn) {
       skipBtn.addEventListener('click', () => {
@@ -92,7 +85,6 @@ export function showOnboarding(onComplete) {
       });
     }
 
-    // Use detected location button
     const useDetectedBtn = overlay.querySelector('#use-detected');
     if (useDetectedBtn) {
       useDetectedBtn.addEventListener('click', () => {
@@ -107,63 +99,76 @@ export function showOnboarding(onComplete) {
   render();
 }
 
-function renderWelcomePage() {
+function renderDots(current, total) {
+  let html = '<div class="page-dots">';
+  for (let i = 0; i < total; i++) {
+    html += `<span class="page-dot${i === current ? ' active' : ''}"></span>`;
+  }
+  html += '</div>';
+  return html;
+}
+
+function renderWelcomePage(_detected, current, total) {
   return `<div class="onboarding-page">
     <div class="onboarding-icon">🌍</div>
     <div class="onboarding-title">Nomad Tracker</div>
-    <div class="onboarding-desc">Track your visa days automatically.<br>Never overstay anywhere.</div>
+    <div class="onboarding-desc">Track your visa days automatically. Never overstay anywhere.</div>
     <ul class="feature-list">
       <li class="feature-item"><span class="feature-icon">📍</span>Auto-detects your country via GPS</li>
-      <li class="feature-item"><span class="feature-icon">📅</span>Understands rolling windows, per-visit, and calendar year rules</li>
+      <li class="feature-item"><span class="feature-icon">📅</span>Rolling, per-visit &amp; calendar year rules</li>
       <li class="feature-item"><span class="feature-icon">🔔</span>Warns you before you approach limits</li>
       <li class="feature-item"><span class="feature-icon">✋</span>Easy manual overrides for past travel</li>
     </ul>
     <div class="onboarding-bottom">
-      <button class="btn btn-primary" id="onboarding-next">Next</button>
+      <button class="btn btn-primary" id="onboarding-next">Get started</button>
+      ${renderDots(current, total)}
     </div>
   </div>`;
 }
 
-function renderCitizenshipPage() {
+function renderCitizenshipPage(_detected, current, total) {
   const options = CITIZENSHIPS.map(c =>
     `<label class="citizenship-option">
       <input type="radio" name="citizenship" value="${c.code}" ${c.code === 'CA' ? 'checked' : ''}>
-      <span style="font-size:24px">${c.emoji}</span>
-      <span style="font-size:16px;font-weight:500">${c.name}</span>
+      <span>${c.emoji}</span>
+      <span>${c.name}</span>
     </label>`
   ).join('');
 
   return `<div class="onboarding-page">
     <div class="onboarding-icon">🛂</div>
-    <div class="onboarding-title">Your Passport</div>
-    <div class="onboarding-desc">Select your citizenship. This determines visa-free access and day limits for each country.</div>
-    <div class="citizenship-list" style="width:100%;max-width:320px">
+    <div class="onboarding-title">Your passport</div>
+    <div class="onboarding-desc">This determines your visa-free access and day limits in each country.</div>
+    <div class="citizenship-list" style="width:100%;max-width:340px">
       ${options}
     </div>
     <div class="onboarding-bottom">
-      <button class="btn btn-primary" id="onboarding-next">Next</button>
+      <button class="btn btn-primary" id="onboarding-next">Continue</button>
+      ${renderDots(current, total)}
     </div>
   </div>`;
 }
 
-function renderLocationPage(detectedLocation) {
+function renderLocationPage(detectedLocation, current, total) {
   const detected = detectedLocation
-    ? `<div style="color:var(--green);font-size:16px;font-weight:600">✅ Location detected: ${detectedLocation.country || detectedLocation.countryCode}</div>`
-    : `<button class="btn btn-primary" id="enable-location">Enable Location</button>`;
+    ? `<div style="display:inline-flex;align-items:center;gap:8px;padding:10px 16px;border-radius:999px;background:rgba(48,199,89,0.16);color:var(--green);font-size:14px;font-weight:600">
+         ✓ Detected: ${detectedLocation.country || detectedLocation.countryCode}
+       </div>`
+    : `<button class="btn btn-primary" id="enable-location" style="max-width:220px">Enable location</button>`;
 
   return `<div class="onboarding-page">
     <div class="onboarding-icon">📍</div>
-    <div class="onboarding-title">Location Access</div>
-    <div class="onboarding-desc">Nomad Tracker uses your location to automatically detect which country you're in each time you open the app.</div>
+    <div class="onboarding-title">Location access</div>
+    <div class="onboarding-desc">Nomad Tracker detects which country you're in each time you open the app.</div>
     ${detected}
     <div class="onboarding-bottom">
       <button class="btn btn-primary" id="onboarding-next">Next</button>
+      ${renderDots(current, total)}
     </div>
   </div>`;
 }
 
-function renderInitialDaysPage(detectedLocation) {
-  // Only show visa-free jurisdictions for the selected citizenship
+function renderInitialDaysPage(detectedLocation, current, total) {
   const jurisdictions = getJurisdictionsForCitizenship(getCitizenship());
   const visaFree = jurisdictions.filter(j => !j.visaRequired && !j.homeCountry && !j.unrestricted);
   const detectedId = detectedLocation?.jurisdiction?.id;
@@ -171,11 +176,9 @@ function renderInitialDaysPage(detectedLocation) {
     `<option value="${j.id}" ${j.id === detectedId ? 'selected' : ''}>${j.emoji} ${j.name}</option>`
   ).join('');
 
-  // Pre-select "None" only if no detected match
   const selectedNone = detectedId ? '' : 'selected';
 
   const today = todayStr();
-  // Default arrival: 3 days ago (reasonable for someone "already traveling")
   const defaultArrival = addDays(today, -3);
 
   const detectedBtn = detectedLocation?.jurisdiction
@@ -184,10 +187,10 @@ function renderInitialDaysPage(detectedLocation) {
 
   return `<div class="onboarding-page">
     <div class="onboarding-icon">📅</div>
-    <div class="onboarding-title">Already Traveling?</div>
-    <div class="onboarding-desc">If you've already been in a jurisdiction, set your arrival date so we can count those days.</div>
+    <div class="onboarding-title">Already traveling?</div>
+    <div class="onboarding-desc">If you've already been somewhere, set your arrival date so we can count those days.</div>
 
-    <div style="width:100%;max-width:320px">
+    <div style="width:100%;max-width:340px">
       <div class="form-group">
         <label class="form-label">Jurisdiction</label>
         <select class="form-select" id="onb-jurisdiction">
@@ -205,8 +208,9 @@ function renderInitialDaysPage(detectedLocation) {
     </div>
 
     <div class="onboarding-bottom">
-      <button class="btn btn-primary" id="get-started">Get Started</button>
-      <button class="btn btn-text" id="onboarding-skip" style="margin-top:8px">Skip — I'll set this up later</button>
+      <button class="btn btn-primary" id="get-started">Start tracking</button>
+      <button class="btn btn-text" id="onboarding-skip" style="margin-top:0">Skip — set up later</button>
+      ${renderDots(current, total)}
     </div>
   </div>`;
 }

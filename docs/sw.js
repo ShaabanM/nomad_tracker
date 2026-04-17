@@ -1,5 +1,5 @@
 // Service Worker for offline caching
-const CACHE_NAME = 'nomad-tracker-v5';
+const CACHE_NAME = 'nomad-tracker-v6';
 const ASSETS = [
   './',
   './index.html',
@@ -56,13 +56,15 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Network-first for HTML + JS so we don't serve stale code indefinitely
-  const isHtmlOrJs = req.destination === 'document' ||
+  // Network-first for HTML + JS + CSS so we don't serve stale code indefinitely
+  const isAppCode = req.destination === 'document' ||
     req.destination === 'script' ||
+    req.destination === 'style' ||
     url.pathname.endsWith('.html') ||
-    url.pathname.endsWith('.js');
+    url.pathname.endsWith('.js') ||
+    url.pathname.endsWith('.css');
 
-  if (isHtmlOrJs) {
+  if (isAppCode) {
     event.respondWith(
       fetch(req).then((response) => {
         if (response && response.ok) {

@@ -1,5 +1,4 @@
-// Gap review modal — asks the user how to classify days between their last
-// recorded day and today when current location differs from last recorded.
+// Gap review modal (Atlas design)
 import { findJurisdictionForCitizenship, getJurisdictionsForCitizenship } from '../data/citizenship-rules.js';
 import {
   fillGapRange,
@@ -18,60 +17,68 @@ export function showGapReview(gap, currentLocation, onDone) {
   const citizenCode = getCitizenship();
   const lastJ = findJurisdictionForCitizenship(gap.lastRecord.jurisdictionId, citizenCode);
   const currentJ = currentLocation?.jurisdiction;
-  const gapStart = gap.gapStart; // inclusive
-  const gapEnd = addDays(gap.gapEndExclusive, -1); // inclusive last gap day (the day before today)
+  const gapStart = gap.gapStart;
+  const gapEnd = addDays(gap.gapEndExclusive, -1);
   const gapDays = gap.gapDays;
 
-  // Build option cards
   const lastBlock = lastJ
-    ? `<button class="btn btn-bordered gap-opt" data-option="last" style="margin-bottom:8px;text-align:left;justify-content:flex-start">
-        <span style="font-size:20px;margin-right:8px">${lastJ.emoji}</span>
-        <span style="flex:1"><strong>Still in ${escapeHtml(lastJ.name)}</strong><br>
-          <span style="font-size:12px;color:var(--text-secondary)">Fill all ${gapDays} day${gapDays === 1 ? '' : 's'} as ${escapeHtml(lastJ.name)}</span></span>
+    ? `<button class="opt-btn" data-option="last">
+        <div class="opt-btn-icon" style="font-size:22px">${lastJ.emoji}</div>
+        <div class="opt-btn-body">
+          <div class="opt-btn-title">Still in ${escapeHtml(lastJ.name)}</div>
+          <div class="opt-btn-desc">Fill all ${gapDays} day${gapDays === 1 ? '' : 's'} as ${escapeHtml(lastJ.name)}</div>
+        </div>
+        <span style="color:var(--text-tertiary)"><svg width="16" height="16"><use href="#icon-chevron-right"/></svg></span>
       </button>`
     : '';
 
   const currentBlock = (currentJ && currentJ.id !== lastJ?.id && !currentJ.visaRequired && !currentJ.homeCountry && !currentJ.unrestricted)
-    ? `<button class="btn btn-bordered gap-opt" data-option="current" style="margin-bottom:8px;text-align:left;justify-content:flex-start">
-        <span style="font-size:20px;margin-right:8px">${currentJ.emoji}</span>
-        <span style="flex:1"><strong>Already in ${escapeHtml(currentJ.name)} the whole time</strong><br>
-          <span style="font-size:12px;color:var(--text-secondary)">Fill all ${gapDays} day${gapDays === 1 ? '' : 's'} as ${escapeHtml(currentJ.name)}</span></span>
+    ? `<button class="opt-btn" data-option="current">
+        <div class="opt-btn-icon" style="font-size:22px">${currentJ.emoji}</div>
+        <div class="opt-btn-body">
+          <div class="opt-btn-title">Already in ${escapeHtml(currentJ.name)} the whole time</div>
+          <div class="opt-btn-desc">Fill all ${gapDays} day${gapDays === 1 ? '' : 's'} as ${escapeHtml(currentJ.name)}</div>
+        </div>
+        <span style="color:var(--text-tertiary)"><svg width="16" height="16"><use href="#icon-chevron-right"/></svg></span>
       </button>`
     : '';
 
   modal.querySelector('.modal-sheet').innerHTML = `
     <div class="modal-handle"></div>
     <div class="modal-title">Unlogged days</div>
-    <div style="font-size:14px;color:var(--text-secondary);line-height:1.45;margin-bottom:16px">
-      You didn't open the app for <strong>${gapDays} day${gapDays === 1 ? '' : 's'}</strong>
-      (${formatDateLong(gapStart)} – ${formatDateLong(gapEnd)}).
-      Last recorded: <strong>${lastJ ? escapeHtml(lastJ.name) : 'Unknown'}</strong>.
-      You're now in <strong>${currentJ ? escapeHtml(currentJ.name) : 'an untracked location'}</strong>.
-      <br><br>
-      Where were you during this time?
+    <div class="modal-desc">
+      You didn't open the app for <strong style="color:var(--text)">${gapDays} day${gapDays === 1 ? '' : 's'}</strong>
+      (${formatDateLong(gapStart)} – ${formatDateLong(gapEnd)}).<br>
+      Last in <strong style="color:var(--text)">${lastJ ? escapeHtml(lastJ.name) : 'Unknown'}</strong>, now in <strong style="color:var(--text)">${currentJ ? escapeHtml(currentJ.name) : 'an untracked location'}</strong>.
     </div>
 
     ${lastBlock}
     ${currentBlock}
 
-    <button class="btn btn-bordered gap-opt" data-option="split" style="margin-bottom:8px;text-align:left;justify-content:flex-start">
-      <span style="font-size:20px;margin-right:8px">🔀</span>
-      <span style="flex:1"><strong>Split — I moved during this time</strong><br>
-        <span style="font-size:12px;color:var(--text-secondary)">Pick a transition date</span></span>
+    <button class="opt-btn" data-option="split">
+      <div class="opt-btn-icon">🔀</div>
+      <div class="opt-btn-body">
+        <div class="opt-btn-title">Split — I moved during this time</div>
+        <div class="opt-btn-desc">Pick a transition date</div>
+      </div>
+      <span style="color:var(--text-tertiary)"><svg width="16" height="16"><use href="#icon-chevron-right"/></svg></span>
     </button>
 
-    <button class="btn btn-bordered gap-opt" data-option="custom" style="margin-bottom:8px;text-align:left;justify-content:flex-start">
-      <span style="font-size:20px;margin-right:8px">✋</span>
-      <span style="flex:1"><strong>Add trips manually</strong><br>
-        <span style="font-size:12px;color:var(--text-secondary)">Multiple legs or other countries</span></span>
+    <button class="opt-btn" data-option="custom">
+      <div class="opt-btn-icon">✋</div>
+      <div class="opt-btn-body">
+        <div class="opt-btn-title">Add trips manually</div>
+        <div class="opt-btn-desc">Multiple legs or other countries</div>
+      </div>
+      <span style="color:var(--text-tertiary)"><svg width="16" height="16"><use href="#icon-chevron-right"/></svg></span>
     </button>
 
-    <button class="btn btn-text" id="gap-skip" style="margin-top:8px">Skip — leave unlogged</button>
+    <button class="btn btn-text" id="gap-skip" style="margin-top:10px">Skip — leave unlogged</button>
   `;
 
   modal.classList.add('open');
 
-  modal.querySelectorAll('.gap-opt').forEach(btn => {
+  modal.querySelectorAll('.opt-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const opt = btn.dataset.option;
       if (opt === 'last') {
@@ -89,7 +96,6 @@ export function showGapReview(gap, currentLocation, onDone) {
   });
 
   modal.querySelector('#gap-skip').addEventListener('click', () => {
-    // Acknowledge the gap so we stop nagging the user today.
     setGapReviewedThrough(todayStr());
     close();
   });
@@ -119,16 +125,15 @@ function showSplitFlow(gap, lastJ, currentJ, onDone) {
   const modal = document.getElementById('modal');
   const gapStart = gap.gapStart;
   const gapEnd = addDays(gap.gapEndExclusive, -1);
-  // Default the transition to the midpoint of the gap
   const mid = addDays(gapStart, Math.floor(gap.gapDays / 2));
 
   modal.querySelector('.modal-sheet').innerHTML = `
     <div class="modal-handle"></div>
     <div class="modal-title">Split the gap</div>
-    <div style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;line-height:1.45">
-      Pick the date you moved from <strong>${lastJ ? escapeHtml(lastJ.name) : 'Unknown'}</strong>
-      to <strong>${currentJ ? escapeHtml(currentJ.name) : 'current location'}</strong>.
-      Days on or after this date will be logged as <strong>${currentJ ? escapeHtml(currentJ.name) : 'current'}</strong>.
+    <div class="modal-desc">
+      Pick the date you moved from <strong style="color:var(--text)">${lastJ ? escapeHtml(lastJ.name) : 'Unknown'}</strong>
+      to <strong style="color:var(--text)">${currentJ ? escapeHtml(currentJ.name) : 'current location'}</strong>.
+      Days on or after this date will be logged as ${currentJ ? escapeHtml(currentJ.name) : 'current'}.
     </div>
 
     <div class="form-group">
@@ -136,10 +141,10 @@ function showSplitFlow(gap, lastJ, currentJ, onDone) {
       <input type="date" class="form-input" id="split-date" value="${mid}" min="${gapStart}" max="${gapEnd}">
     </div>
 
-    <div id="split-preview" style="font-size:13px;color:var(--text-secondary);margin-bottom:16px"></div>
+    <div id="split-preview" style="font-size:13px;color:var(--text-secondary);margin:4px 2px 18px;line-height:1.5"></div>
 
     <button class="btn btn-primary" id="split-confirm">Log these days</button>
-    <button class="btn btn-text" id="split-back" style="margin-top:8px">Back</button>
+    <button class="btn btn-text" id="split-back" style="margin-top:4px">Back</button>
   `;
 
   const updatePreview = () => {
@@ -148,8 +153,8 @@ function showSplitFlow(gap, lastJ, currentJ, onDone) {
     const daysLast = Math.max(0, diffDays(t, gapStart));
     const daysCurrent = Math.max(0, diffDays(addDays(gapEnd, 1), t));
     document.getElementById('split-preview').innerHTML = `
-      ${lastJ ? `${lastJ.emoji} ${escapeHtml(lastJ.name)}: <strong>${daysLast}</strong> day${daysLast === 1 ? '' : 's'}<br>` : ''}
-      ${currentJ ? `${currentJ.emoji} ${escapeHtml(currentJ.name)}: <strong>${daysCurrent}</strong> day${daysCurrent === 1 ? '' : 's'}` : ''}
+      ${lastJ ? `${lastJ.emoji} ${escapeHtml(lastJ.name)}: <strong style="color:var(--text)">${daysLast}</strong> day${daysLast === 1 ? '' : 's'}<br>` : ''}
+      ${currentJ ? `${currentJ.emoji} ${escapeHtml(currentJ.name)}: <strong style="color:var(--text)">${daysCurrent}</strong> day${daysCurrent === 1 ? '' : 's'}` : ''}
     `;
   };
   document.getElementById('split-date').addEventListener('change', updatePreview);
@@ -189,30 +194,27 @@ function showCustomFlow(gap, onDone) {
   modal.querySelector('.modal-sheet').innerHTML = `
     <div class="modal-handle"></div>
     <div class="modal-title">Add a trip</div>
-    <div style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;line-height:1.45">
-      Log one leg at a time. You can keep adding trips until the gap is covered.
-      Unlogged days: <strong>${gapStart}</strong> – <strong>${gapEnd}</strong>.
+    <div class="modal-desc">
+      Log one leg at a time. Keep adding trips until the gap is covered.<br>
+      Unlogged: <strong style="color:var(--text)">${gapStart}</strong> – <strong style="color:var(--text)">${gapEnd}</strong>.
     </div>
 
     <div class="form-group">
       <label class="form-label">Jurisdiction</label>
       <select class="form-select" id="custom-j">${options}</select>
     </div>
-
     <div class="form-group">
       <label class="form-label">From</label>
       <input type="date" class="form-input" id="custom-start" value="${gapStart}" min="${gapStart}" max="${gapEnd}">
     </div>
-
     <div class="form-group">
       <label class="form-label">To</label>
       <input type="date" class="form-input" id="custom-end" value="${gapEnd}" min="${gapStart}" max="${gapEnd}">
     </div>
-
-    <div id="custom-preview" style="font-size:13px;color:var(--text-secondary);margin-bottom:16px"></div>
+    <div id="custom-preview" style="font-size:13px;color:var(--text-secondary);margin:4px 2px 16px"></div>
 
     <button class="btn btn-primary" id="custom-add">Add trip</button>
-    <button class="btn btn-text" id="custom-done" style="margin-top:8px">Done</button>
+    <button class="btn btn-text" id="custom-done" style="margin-top:4px">Done</button>
   `;
 
   const updatePreview = () => {
@@ -239,8 +241,6 @@ function showCustomFlow(gap, onDone) {
     if (!j || !start || !end || start > end) return;
     const code = [...j.countryCodes][0] || 'XX';
     fillGapRange(j.id, code, parseDate(start), parseDate(end), 'manual');
-    // Re-open with updated gap state. We don't recompute gap boundaries here —
-    // the parent app.js will recompute on data-changed. Just close after a short tick.
     setGapReviewedThrough(todayStr());
     modal.classList.remove('open');
     onDone?.();
